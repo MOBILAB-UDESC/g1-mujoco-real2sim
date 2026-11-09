@@ -32,6 +32,7 @@ An add-on module may define (all optional):
 """
 
 import argparse
+import contextlib
 import importlib
 import json
 import os
@@ -282,12 +283,14 @@ class CameraServer:
         return ", ".join(f"{t} {self.cam_config[t]['image_shape'][1]}x{self.cam_config[t]['image_shape'][0]}"
                          f" :{p}" for t, p, _, _ in self.streams)
 
-    def render(self, data):
+    def render(self, data, lock):
+        """lock guards `data` (physics runs on another thread); it is only held while the scene is read."""
         frames = []
         for _, port, cam_ids, shadows in self.streams:
             views = []
             for cam_id, name in cam_ids:
-                self.renderer.update_scene(data, camera=cam_id)
+                with lock:
+                    self.renderer.update_scene(data, camera=cam_id)
                 self.renderer.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = shadows
                 views.append((name, self.renderer.render().copy()))
             frames.append((port, views))
@@ -372,6 +375,9 @@ class G1XrSim:
         # Arm rest pose: held by the sim's own controller until a controller connects, and set on reset.
         self.arm_home = np.array(getattr(self.task, "arm_home", np.zeros(14)), dtype=float)
 
+        self.sim_lock = threading.RLock()  # guards model/data: physics thread vs cameras, state publishing
+        self.running = False
+        self.dropped_steps = 0
         self.fixed = not args.free
         self.pending = queue.Queue()  # actions requested from other threads ("toggle", "reset", "reset_objects")
         self.reset(robot=True)
@@ -644,9 +650,8 @@ class G1XrSim:
 
         cam_period, viewer_period, state_period = 1.0 / args.fps, 1.0 / 60.0, 1.0 / 30.0
         t0 = time.perf_counter()
-        steps = 0
         last_cam = last_view = last_state = last_video = -1.0
-        last_report, dropped, cam_frames = 0.0, 0, 0
+        last_report, cam_frames = 0.0, 0
         video = None
         if args.debug_video:
             video_renderer = mujoco.Renderer(self.model, 480, 640)
@@ -663,46 +668,40 @@ class G1XrSim:
         self.running = True
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: setattr(self, "running", False))
+        physics = threading.Thread(target=self._physics_loop, args=(viewer,), daemon=True)
+        physics.start()
         try:
+            # This (main / GL) thread only renders and publishes; physics keeps real time on its own thread.
             while self.running and (viewer is None or viewer.is_running()):
-                self.handle_pending()
                 now = time.perf_counter() - t0
-                # Step physics until it catches up with wall time (bounded so rendering can't starve it forever).
-                budget = 50
-                while steps * self.dt < now and budget > 0:
-                    self.loco_step()
-                    self.apply_pd()
-                    mujoco.mj_step(self.model, self.data)
-                    self.snapshot_state()
-                    steps += 1
-                    budget -= 1
-                if budget == 0:  # too far behind: drop the backlog instead of fast-forwarding
-                    dropped += int(now / self.dt) - steps
-                    steps = int(now / self.dt)
                 if now - last_report >= 5.0:  # tell the user when the PC can't keep up (data would be off)
+                    dropped, self.dropped_steps = self.dropped_steps, 0
                     rtf = 1.0 - dropped * self.dt / (now - last_report)
                     fps = (cam.frames - cam_frames) / (now - last_report) if cam else args.fps
                     if rtf < 0.95 or fps < 0.85 * args.fps:
                         print(f"[sim] WARNING: PC overloaded - physics at {rtf:.2f}x real time, cameras at {fps:.0f} fps "
                               f"(wanted {args.fps:g}). Close other programs or use --no-viewer.", flush=True)
                     self.rtf = rtf
-                    last_report, dropped, cam_frames = now, 0, cam.frames if cam else 0
+                    last_report, cam_frames = now, cam.frames if cam else 0
 
                 if cam and now - last_cam >= cam_period:
                     # Fixed timeline (not "now"), so being a few ms late doesn't lower the frame rate.
                     last_cam = last_cam + cam_period if now - last_cam < 2 * cam_period else now
-                    cam.render(self.data)
+                    cam.render(self.data, self.sim_lock)
                 if video and now - last_video >= 1 / 15:
                     last_video = now
-                    video_renderer.update_scene(self.data, camera=video_cam)
+                    with self.sim_lock:
+                        video_renderer.update_scene(self.data, camera=video_cam)
                     video.write(cv2.cvtColor(video_renderer.render(), cv2.COLOR_RGB2BGR))
                 if now - last_state >= state_period:
                     last_state = last_state + state_period if now - last_state < 2 * state_period else now
-                    self.publish_sim_state()
-                    if log is not None:
-                        d, m = self.data, self.model
-                        log.append((now, d.qpos.copy(), d.mocap_pos.copy(), d.mocap_quat.copy(),
-                                    m.body_pos.astype(np.float32), m.body_quat.astype(np.float32), self.last_success))
+                    with self.sim_lock:
+                        self.publish_sim_state()
+                        if log is not None:
+                            d, m = self.data, self.model
+                            log.append((now, d.qpos.copy(), d.mocap_pos.copy(), d.mocap_quat.copy(),
+                                        m.body_pos.astype(np.float32), m.body_quat.astype(np.float32),
+                                        self.last_success))
                 if viewer and now - last_view >= viewer_period:
                     last_view = now
                     if shown_fixed != self.fixed:  # set_texts takes the viewer lock itself
@@ -710,12 +709,19 @@ class G1XrSim:
                         viewer.set_texts((None, mujoco.mjtGridPos.mjGRID_TOPLEFT,
                                           "FIXED pelvis" if self.fixed else "FREE-standing",
                                           "9: toggle base   0: reset"))
-                    viewer.sync()
+                    viewer.sync()  # takes the viewer lock, which the physics thread holds while it steps
 
-                sleep = (steps * self.dt) - (time.perf_counter() - t0)
+                due = [last_state + state_period]
+                if cam:
+                    due.append(last_cam + cam_period)
+                if viewer:
+                    due.append(last_view + viewer_period)
+                sleep = min(due) - (time.perf_counter() - t0)
                 if sleep > 0:
-                    time.sleep(sleep)
+                    time.sleep(min(sleep, 0.01))
         finally:
+            self.running = False
+            physics.join(timeout=1.0)
             if viewer:
                 viewer.close()
             if video:
@@ -725,6 +731,37 @@ class G1XrSim:
                 np.savez_compressed(args.log_qpos, **{k: np.array(v) for k, v in zip(keys, zip(*log))})
                 print(f"[sim] wrote {args.log_qpos} ({len(log)} samples)", flush=True)
             print("[sim] bye", flush=True)
+
+    def _physics_loop(self, viewer):
+        """Real-time physics and control on its own thread. Rendering three cameras takes tens of ms per
+        frame on an integrated GPU; done on this thread too, that would hold the PD loop back in bursts and
+        make the robot's behaviour depend on the camera load (the GL calls release the Python GIL)."""
+        viewer_lock = viewer.lock if viewer else contextlib.nullcontext
+        t0 = time.perf_counter()
+        steps = 0
+        while self.running:
+            now = time.perf_counter() - t0
+            budget = 50  # at most 0.1 s of sim time per pass, so a stall can't freeze everything else
+            try:
+                with self.sim_lock, viewer_lock():
+                    self.handle_pending()
+                    while steps * self.dt < now and budget > 0:
+                        self.loco_step()
+                        self.apply_pd()
+                        mujoco.mj_step(self.model, self.data)
+                        self.snapshot_state()
+                        steps += 1
+                        budget -= 1
+            except Exception:
+                if not self.running:  # the viewer was closed under us while shutting down
+                    break
+                raise
+            if budget == 0:  # too far behind: drop the backlog instead of fast-forwarding
+                self.dropped_steps += int(now / self.dt) - steps
+                steps = int(now / self.dt)
+            sleep = steps * self.dt - (time.perf_counter() - t0)
+            if sleep > 0:
+                time.sleep(sleep)
 
 
 if __name__ == "__main__":

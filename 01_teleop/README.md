@@ -172,6 +172,7 @@ To change the scene, edit [g1sim/scenes/scene_demo.xml](g1sim/scenes/scene_demo.
 ## 9. How it works
 
 - [g1sim/g1_xr_sim.py](g1sim/g1_xr_sim.py) loads Unitree's `g1_29dof.xml`, attaches the scene, and steps MuJoCo in real time.
+- Physics and the PD control loop run on their own thread at real time. Camera rendering (tens of milliseconds per frame on an integrated GPU) runs on the main thread and cannot hold the control loop back. If the PC still cannot keep up, the sim prints `[sim] WARNING: PC overloaded ...`.
 - It subscribes to `rt/lowcmd` (debug mode: a PD torque per joint) and to `rt/arm_sdk` plus the locomotion request topic (motion mode: it plays Unitree's motion controller), and publishes `rt/lowstate` at 500 Hz.
 - It renders the head cameras and serves them with teleimager's own ZMQ classes: a config reply on port 60000 and a JPEG stream on port 55555.
 - xr_teleoperate is started with `--sim --network-interface lo --img-server-ip 127.0.0.1`, the same flags Unitree uses for its Isaac simulation.
