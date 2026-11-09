@@ -1,9 +1,9 @@
 # upstream clones (install/install.sh)
 third_party/
 # data: recorded / downloaded datasets, calibration frame cache, training outputs
-datasets/
+datasets
 outputs/
-03_real2sim/calib/real_refs/
+03_real2sim/calib/real_refs
 *.mp4
 !docs/media/*.mp4
 # python / editors
