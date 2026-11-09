@@ -2,7 +2,7 @@
 
 MCP (Model Context Protocol) is a standard way to give an AI assistant tools it can call. This server gives an assistant such as Claude Code ten tools to **see through the G1's cameras and move its arms step by step**, in the MuJoCo lab sim or on the real robot, and to record what it does as LeRobot episodes.
 
-It is one of the three episode sources of [stage 4](../README.md). You do not need it for the other two.
+It is a variant of source B (code-as-policy) of [stage 4](../README.md): the assistant writes or runs the steps itself. You do not need it for the other sources.
 
 - Code: [mcp_server.py](mcp_server.py). Launcher: `scripts/run_mcp.sh`.
 - It drives the robot through `g1lab.robot_io.G1Arms`, the same DDS topics and image protocol xr_teleoperate uses.
@@ -11,7 +11,7 @@ It is one of the three episode sources of [stage 4](../README.md). You do not ne
 ## 1. Prerequisites
 
 - `install/install.sh` and `install/setup_g1lab_env.sh` done (the server runs in the `g1lab` env).
-- An MCP client. The examples use Claude Code.
+- An MCP client. The examples use Claude Code. Get it at <https://claude.com/claude-code>.
 
 ## 2. Start the sim
 

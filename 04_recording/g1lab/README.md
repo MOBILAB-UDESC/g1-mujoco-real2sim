@@ -11,6 +11,7 @@
 | [lerobot_writer.py](lerobot_writer.py) | `LeRobotWriter`: writes episodes in our dataset format |
 | [convert_xr_json.py](convert_xr_json.py) | Converts `xr_teleoperate --record` folders to LeRobot |
 | [pad_waist.py](pad_waist.py) | Pads a 14-joint dataset to 15 joints (waist = 0) |
+| [check_dataset.py](check_dataset.py) | Prints episodes, episode lengths, joint ranges of motion, joints that never move and the share of repeated camera frames |
 | [scripted/box_into_box.py](scripted/box_into_box.py) | Code-as-policy episode generator for the lab task |
 | [remote_vla.py](remote_vla.py), [vla_mocks.py](vla_mocks.py) | Remote VLA client (dream / openpi / gr00t) and local mock servers |
 | [mcp_server.py](mcp_server.py) | MCP server for AI assistants, see [MCP.md](MCP.md) |
@@ -148,7 +149,7 @@ python -m pytest 04_recording -q
 ```
 
 - Need no sim: writer, converter, recorder logic, VLA client against the mocks, MCP server with a fake robot, unitree_bridge with a stand-in module.
-- Skipped unless available: comparisons against the real dataset (expected at `04_recording/pick_cubeDataset/pick_cubeZip`), and the tests that drive a running sim (they read `G1_MCP_TEST_DOMAIN` / `G1_MCP_TEST_IMAGE_PORT` and `G1LAB_SIM_DOMAIN` / `G1LAB_SIM_IMAGE_PORT`).
+- Skipped unless available: comparisons against the real dataset (expected at `datasets/pick_cube_real`, from the repository folder), and the tests that drive a running sim (they read `G1_MCP_TEST_DOMAIN` / `G1_MCP_TEST_IMAGE_PORT` and `G1LAB_SIM_DOMAIN` / `G1LAB_SIM_IMAGE_PORT`).
 
 ## Troubleshooting
 

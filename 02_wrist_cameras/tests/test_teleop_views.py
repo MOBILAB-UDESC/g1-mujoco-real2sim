@@ -1,6 +1,6 @@
 """Display logic of teleop_views.py against fake frames and a fake vuer session (no server, no headset).
 
-    source scripts/env.sh tv; python -m pytest 02_wrist_cameras/tests -q -p no:cacheprovider
+    source scripts/env.sh g1sim; python -m pytest 02_wrist_cameras/tests -q -p no:cacheprovider
 """
 
 import asyncio

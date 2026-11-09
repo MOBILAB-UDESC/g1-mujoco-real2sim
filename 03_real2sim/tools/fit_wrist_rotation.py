@@ -4,7 +4,7 @@ real recordings: the wrist's rotation between two frames is known exactly from t
 homography H = K Rm^T (Rw2^T Rw1) Rm K^-1 - pins down K (focal length) and Rm (camera-in-wrist rotation).
 
 Frames: tools/extract_real_refs.py --video-cams (gray 320x240). Run in the g1lab env (pinocchio, scipy).
-    python 03_real2sim/tools/fit_wrist_rotation.py left
+    python 03_real2sim/tools/fit_wrist_rotation.py
 Prints the vertical FOV at 640x480 and the camera rotation (OpenCV and MuJoCo conventions).
 """
 

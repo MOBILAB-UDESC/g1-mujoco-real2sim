@@ -9,6 +9,11 @@ unset PYTHONPATH LD_LIBRARY_PATH CYCLONEDDS_URI
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV="${G1LAB_ENV:-g1lab}"   # override to build a throwaway copy
 
+# Same fallback as scripts/env.sh: install.sh may have just installed Miniforge, and this terminal's
+# PATH does not have it yet.
+if ! command -v conda >/dev/null 2>&1 && [ -x "$HOME/miniforge3/bin/conda" ]; then
+  export PATH="$HOME/miniforge3/bin:$PATH"
+fi
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
 if ! conda env list | awk '{print $1}' | grep -qx "$ENV"; then

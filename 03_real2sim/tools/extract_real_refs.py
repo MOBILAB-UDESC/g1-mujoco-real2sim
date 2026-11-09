@@ -3,7 +3,7 @@
 For each requested episode: states/actions (npz) and the three camera frames at a few frame indices
 (PNG). Needs pandas + pyarrow + ffmpeg (e.g. the `lerobot` or `g1lab` conda env).
 
-    python 03_real2sim/tools/extract_real_refs.py --dataset datasets/g1_pick_cube_real --episodes 0 7 23 \
+    python 03_real2sim/tools/extract_real_refs.py --dataset datasets/pick_cube_real --episodes 0 7 23 \
         --frames 0 60 150 240 300 --out 03_real2sim/calib/real_refs
 """
 

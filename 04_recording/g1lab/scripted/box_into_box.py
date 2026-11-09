@@ -12,7 +12,7 @@ Every episode is varied (sim2real): start arm/waist pose, speed, squeeze width, 
 clearance, drop waist angle, waypoint jitter; the sim adds object poses and visuals with --randomize.
 
     scripts/run_sim.sh --scene lab --randomize --no-viewer
-    python -m g1lab.scripted.box_into_box --episodes 20 --root datasets/sim_scripted --repo-id local/g1_sim_scripted
+    python -m g1lab.scripted.box_into_box --episodes 20 --root datasets/sim_scripted_waist --repo-id local/sim_scripted_waist
 
 The same structure is the template for Claude-written policies: everything goes through G1Arms, so a
 policy written here runs unchanged against the real robot's channels (minus the privileged sim state).
@@ -180,7 +180,7 @@ def main():
     p.add_argument("--episodes", type=int, default=10, help="successful episodes to collect")
     p.add_argument("--max-attempts", type=int, default=None)
     p.add_argument("--root", default=None, help="LeRobot dataset root (omit to run without recording)")
-    p.add_argument("--repo-id", default="local/g1_sim_scripted")
+    p.add_argument("--repo-id", default="local/sim_scripted_waist")
     p.add_argument("--task", default=TASK)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--domain", type=int, default=None)

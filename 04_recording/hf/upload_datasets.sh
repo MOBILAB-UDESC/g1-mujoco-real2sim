@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PRINT (never run) the Hugging Face Hub commands that publish the lab's G1 LeRobot datasets.
 #
-#   04_recording/hf/upload_datasets.sh <LAB_HF_ORG>            # e.g. mobilab-udesc
+#   04_recording/hf/upload_datasets.sh "<LAB_HF_ORG>"          # e.g. mobilab-udesc
 #   REAL_DIR=... REAL_WAIST_DIR=... SIM_DIR=... 04_recording/hf/upload_datasets.sh mobilab-udesc
 #
 # For each dataset that exists locally it renders the card (hf/cards/<name>/README.md, with <LAB_HF_ORG> and

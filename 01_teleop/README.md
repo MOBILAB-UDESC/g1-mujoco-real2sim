@@ -16,6 +16,14 @@
 
 ## 1. Install (once, about 10 minutes)
 
+On a fresh Ubuntu, install the basic tools first (once):
+
+```bash
+sudo apt install -y git curl openssl
+```
+
+Then clone and install:
+
 ```bash
 git clone https://github.com/MOBILAB-UDESC/g1-mujoco-real2sim.git
 cd g1-mujoco-real2sim
@@ -102,7 +110,7 @@ Press [r] to start syncing the robot with your movements.
 ## 5. Connect the Quest 3
 
 1. Put on the headset and open the **Browser**.
-2. Type the short link from step 4, for example `192.168.50.144:8080`.
+2. Type the short link that terminal 2 printed in step 4. It looks like `192.168.x.x:8080`, with the PC's real address.
 3. A certificate warning appears. Tap **Advanced**, then **Proceed to ... (unsafe)**. This is expected: the certificate is self-signed.
 4. Tap **Virtual Reality** and allow the permissions.
 

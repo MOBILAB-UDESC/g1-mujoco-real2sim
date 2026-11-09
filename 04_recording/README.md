@@ -228,7 +228,9 @@ Bad demonstrations teach bad behaviour. Remove failed and sloppy episodes before
 
 ### a) Unitree's flow, for `xr_teleoperate --record` folders
 
-This is Unitree's recommended practice: watch every episode, delete the failed ones, trim, renumber, then convert. The tools are in [unitree_lerobot](https://github.com/unitreerobotics/unitree_lerobot), cloned by the installer into `third_party/unitree_lerobot`. They need their own env; follow the install section of their README. Then:
+This is Unitree's recommended practice: watch every episode, delete the failed ones, trim, renumber, then convert. The tools are in [unitree_lerobot](https://github.com/unitreerobotics/unitree_lerobot), cloned by the installer into `third_party/unitree_lerobot`. They need their own env; follow the install section of their README.
+
+Not run by us: unitree_lerobot is not installed on the development PC; the commands follow Unitree's README.
 
 ```bash
 conda activate unitree_lerobot
@@ -248,6 +250,18 @@ python unitree_lerobot/utils/sort_and_rename_folders.py --data_dir ../xr_teleope
 4. Convert (step 7).
 
 ### b) LeRobot tools, for datasets already in LeRobot format
+
+Get an overview first:
+
+```bash
+python -m g1lab.check_dataset datasets/teleop_waist
+```
+
+You should see the episode count, the shortest and longest episode, how far each joint moves, joints that never move, and the share of repeated camera frames. Things to look for:
+
+- A very short episode (ours: one real episode of 0.2 s) is a false start. Delete it.
+- A joint that never moves (the waist in data recorded without waist motion) needs data with motion mixed in before you train on it, see [stage 5](../05_training/README.md).
+- More than a few percent of repeated frames means the camera stream was slower than the 30 Hz recording (in sim: an overloaded PC, see [troubleshooting](../docs/TROUBLESHOOTING.md)).
 
 Watch an episode (opens the rerun viewer):
 
@@ -302,6 +316,8 @@ PYTHONPATH=$PWD/04_recording python -m unitree_bridge.convert \
     --repo-id local/teleop_arms --robot-type Unitree_G1_ArmsOnly_3Cam --output-root datasets
 ```
 
+It writes to `<output-root>/<repo-id>`: this example writes to `datasets/local/teleop_arms`, not to `datasets/teleop_arms` like our converter above.
+
 Details and the waist caveat: [unitree_bridge/README.md](unitree_bridge/README.md).
 
 Pad a 14-joint dataset (for example the real one) to 15 joints so it can be merged with sim data that moves the waist:
@@ -318,7 +334,7 @@ Datasets are not in git. The upload script only **prints** the commands; you rev
 
 ```bash
 hf auth login
-04_recording/hf/upload_datasets.sh <LAB_HF_ORG>
+04_recording/hf/upload_datasets.sh "<LAB_HF_ORG>"
 ```
 
 You should see, for each dataset found in `datasets/`, four commands: create a private dataset repo, upload the folder, upload the dataset card, and tag it `v3.0` (LeRobot refuses a Hub dataset without that tag).

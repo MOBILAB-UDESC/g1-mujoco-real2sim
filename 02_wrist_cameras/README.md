@@ -6,7 +6,7 @@
 
 - The simulated G1 with the hardware our real robot carries on its wrists: gloved rubber hands and one Intel RealSense D405 camera per wrist on a MOBILAB 3D-printed bracket.
 - Three camera streams (head, left wrist, right wrist), served like on the real robot.
-- The two wrist views inside the Quest 3, next to the head view, in a layout you can switch while teleoperating.
+- The two wrist views inside the Quest 3, next to the head view, in a layout you can switch while teleoperating (not yet checked on a physical Quest 3).
 
 **Prerequisites**
 
@@ -54,7 +54,7 @@ Start teleop as in stage 1:
 scripts/run_teleop.sh --controller
 ```
 
-You should see this line once the Quest page is open:
+You should see this line in terminal 2 during start-up:
 
 ```
 [wrist views] left 640x480, right 640x480; layout pip; toggle: page button, VR button, left X
@@ -111,7 +111,6 @@ Good to know:
 
 ```bash
 source scripts/env.sh g1sim
-pip install pytest
 python -m pytest 02_wrist_cameras/tests -q
 ```
 

@@ -4,7 +4,7 @@ Kinematic replay (no physics): the 14 arm joints are set from observation.state,
 is at its standing pose, and the objects are placed with --wrap / --box. Writes, per frame, a
 [real | sim | 50 % blend] strip for each camera into one contact sheet.
 
-Reference data comes from tools/extract_real_refs.py (sim/calib/real_refs).
+Reference data comes from tools/extract_real_refs.py (03_real2sim/calib/real_refs).
 
     python 03_real2sim/tools/calibrate_replay.py --episode 0 --frames 0 120 240 --out calib_sheet.jpg
 """

@@ -22,7 +22,7 @@ TEX = os.path.join(ASSET, "tex")
 
 GLOVE_THICKNESS = 0.007  # stuffed knit work glove with rubber pads (real glove fills ~1/3 of the wrist images)
 HAND_OFFSET = {"left": (0.0415, 0.003, 0.0), "right": (0.0415, -0.003, 0.0)}  # URDF *_hand_palm_joint
-# MOBILAB bracket frame -> wrist yaw link (see sim/lab_scene.py bracket_to_yaw)
+# MOBILAB bracket frame -> wrist yaw link (see 02_wrist_cameras/wrist_cameras.py bracket_to_yaw)
 BRACKET_TO_YAW = {"right": ((0, 0, 1), (1, 0, 0), (0, 1, 0)), "left": ((0, 0, -1), (-1, 0, 0), (0, 1, 0))}
 MOUNT_AXIAL_OFFSET = 0.013
 # ring clamp (clamp frame: ring axis = Y, band Y 113..123) -> right bracket frame (band Z 15..25), mm

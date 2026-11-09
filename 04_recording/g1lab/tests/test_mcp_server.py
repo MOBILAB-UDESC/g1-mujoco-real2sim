@@ -1,10 +1,10 @@
 """Tests for g1lab/mcp_server.py.
 
-    env -u PYTHONPATH -u LD_LIBRARY_PATH -u CYCLONEDDS_URI ~/miniforge3/envs/tv/bin/python -m pytest g1lab/tests/test_mcp_server.py -v
+    env -u PYTHONPATH -u LD_LIBRARY_PATH -u CYCLONEDDS_URI ~/miniforge3/envs/g1sim/bin/python -m pytest g1lab/tests/test_mcp_server.py -v
 
 The unit tests use a fake robot. The sim tests drive a running sim over stdio through scripts/run_mcp.sh;
-they run only when G1_MCP_TEST_DOMAIN is set, e.g. with a sim started as
-    sim/g1_xr_sim.py --scene lab --no-viewer --domain 4 --port-offset 2000
+they run only when G1_MCP_TEST_DOMAIN is set, e.g. with a sim started as (env g1sim)
+    scripts/run_sim.sh --scene lab --no-viewer --domain 4 --port-offset 2000
     G1_MCP_TEST_DOMAIN=4 G1_MCP_TEST_IMAGE_PORT=62000 python -m pytest g1lab/tests/test_mcp_server.py -v
 """
 

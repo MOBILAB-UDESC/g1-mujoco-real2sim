@@ -12,7 +12,7 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from g1lab.convert_xr_json import main as convert_main
 from g1lab.lerobot_writer import CAMERAS, IMAGE_SHAPE, LeRobotWriter
 
-REAL_ROOT = Path(__file__).resolve().parents[2] / "pick_cubeDataset" / "pick_cubeZip"
+REAL_ROOT = Path(__file__).resolve().parents[3] / "datasets" / "pick_cube_real"  # <repo>/datasets/pick_cube_real
 REPO_ID = "local/g1lab_test"
 TASK = "pick up cube."
 # Fields that legitimately differ between datasets of different length.

@@ -11,7 +11,7 @@ can run beside whatever is driving it, in the sim or on the real G1.
     # unattended (sim): an episode starts on every rt/reset_pose/cmd (+ --start-delay) and is saved once the
     # sim's success flag (rt/rewards_state) has held for --success-hold s; attempts that never succeed are dropped
     python -m g1lab.record_live --root /tmp/rec --auto-start --start-delay 2 --auto-success --only-success \
-        --domain 7 --image-port 67000
+        --domain 7 --image-port 61000      # sim started with --domain 7 --port-offset 1000
 
 Why not xr_teleoperate's own --record: with --input-mode controller --motion the operator twists the waist
 with the right joystick (LocoClient.Move vyaw; the sim emulates Unitree's motion controller), but Unitree's
@@ -536,7 +536,7 @@ def parse_args(argv=None):
     p.add_argument("--domain", type=int, default=None, help="DDS domain override (sim --domain 7)")
     p.add_argument("--iface", default=None)
     p.add_argument("--image-host", default=None)
-    p.add_argument("--image-port", type=int, default=60000, help="teleimager request port (sim --port-offset 7000 -> 67000)")
+    p.add_argument("--image-port", type=int, default=60000, help="teleimager request port (sim --port-offset 1000 -> 61000)")
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--no-waist", action="store_true", help="14 arm joints (Unitree_G1_ArmsOnly_3Cam)")
     p.add_argument("--waist-action", choices=WAIST_MODES, default="auto", help="see the module docstring")

@@ -1,7 +1,7 @@
 """Tests for g1lab.remote_vla against the local mocks in g1lab.vla_mocks.
 
     # unit + protocol tests (no sim needed, ~15 s)
-    env -u PYTHONPATH -u LD_LIBRARY_PATH -u CYCLONEDDS_URI ~/miniforge3/envs/tv/bin/python -m g1lab.tests.test_remote_vla
+    env -u PYTHONPATH -u LD_LIBRARY_PATH -u CYCLONEDDS_URI ~/miniforge3/envs/g1sim/bin/python -m g1lab.tests.test_remote_vla
 
     # + closed-loop tests on a running sim, e.g. one started with --domain 3 --port-offset 1000
     G1LAB_SIM_DOMAIN=3 G1LAB_SIM_IMAGE_PORT=61000 ... python -m g1lab.tests.test_remote_vla

@@ -1,8 +1,8 @@
 """Deploy a trained LeRobot ACT checkpoint on the G1 arms (+ waist), closed loop at 30 Hz through G1Arms.
 
-    # sim (start it first, e.g. scripts/run_sim.sh --scene lab --randomize --no-viewer --domain 7 --port-offset 7000)
+    # sim (start it first, e.g. scripts/run_sim.sh --scene lab --randomize --no-viewer --domain 7 --port-offset 1000)
     python 05_training/run_act.py --policy-path outputs/act/checkpoints/last/pretrained_model \
-        --episodes 5 --domain 7 --image-port 67000 [--record datasets/act_rollouts]
+        --episodes 5 --domain 7 --image-port 61000 [--record datasets/act_rollouts]
     # compute actions on the live robot/sim without sending anything
     python 05_training/run_act.py --policy-path ... --dry-run --max-seconds 10
     # real robot (asks for "yes" after a checklist)
@@ -337,7 +337,7 @@ def parse_args(argv=None):
     p.add_argument("--policy-path", required=True, help=".../checkpoints/<step|last>/pretrained_model")
     p.add_argument("--target", default="sim", choices=["sim", "real"])
     p.add_argument("--domain", type=int, default=None, help="DDS domain override (sim --domain 7)")
-    p.add_argument("--image-port", type=int, default=60000, help="teleimager request port (sim --port-offset 7000 -> 67000)")
+    p.add_argument("--image-port", type=int, default=60000, help="teleimager request port (sim --port-offset 1000 -> 61000)")
     p.add_argument("--image-host", default=None)
     p.add_argument("--iface", default=None)
     p.add_argument("--motion", action="store_true", help="drive arms via rt/arm_sdk (robot in motion mode); no waist")

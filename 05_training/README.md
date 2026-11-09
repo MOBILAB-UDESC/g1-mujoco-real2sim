@@ -24,12 +24,14 @@ source scripts/env.sh g1lab
 
 Use your own from stage 4, or download ours:
 
+The datasets are not public yet: until they are, use your own recordings or ask the lab for the folders.
+
 ```bash
-hf download <LAB_HF_ORG>/g1_pick_cube_real_waist --repo-type dataset --local-dir datasets/real_waist
+hf download "<LAB_HF_ORG>/g1_pick_cube_real_waist" --repo-type dataset --local-dir datasets/real_waist
 ```
 
 ```bash
-hf download <LAB_HF_ORG>/g1_box_into_box_sim_scripted --repo-type dataset --local-dir datasets/sim_scripted_waist
+hf download "<LAB_HF_ORG>/g1_box_into_box_sim_scripted" --repo-type dataset --local-dir datasets/sim_scripted_waist
 ```
 
 You should see a `meta/`, `data/` and `videos/` folder in each.
@@ -86,7 +88,16 @@ Training happens on another machine. Two routes:
 
 | Route | How |
 |---|---|
-| Any GPU PC or cloud GPU | Clone this repo there, run `install/install.sh` and `install/setup_g1lab_env.sh` (then install a CUDA build of PyTorch in the `g1lab` env), copy or download the dataset, and run the command below. |
+| Any GPU PC or cloud GPU | Clone this repo there, run `install/install.sh` and `install/setup_g1lab_env.sh`, install a CUDA build of PyTorch in the `g1lab` env (command below), copy or download the dataset, and run the training command. |
+
+CUDA build of PyTorch (the setup script installs the CPU build). Pick the index that matches your CUDA version on pytorch.org:
+
+```bash
+source scripts/env.sh g1lab
+pip install --force-reinstall "torch>=2.2.1,<2.8.0" "torchvision>=0.21.0,<0.23.0" --index-url https://download.pytorch.org/whl/cu124
+```
+
+Train:
 
 ```bash
 05_training/train_act.sh --root datasets/mixed_waist --repo-id local/mixed_waist --output outputs/act_mixed

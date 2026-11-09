@@ -8,7 +8,7 @@
 #   --wrist-layout pip|side|off         wrist views at start (default pip; toggle in VR: left X / the
 #                                       "WRIST VIEW" button, or the button at the bottom-left of the page)
 # Any other args go to teleop_hand_and_arm.py, e.g.:  scripts/run_teleop.sh --controller --record
-# Env: G1_ENV conda env (default g1sim; the lab PC uses tv:  G1_ENV=tv scripts/run_teleop.sh ...)
+# Env: G1_ENV conda env (default g1sim)
 set -e
 # "" so env.sh doesn't take our first argument for the env name.
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh" ""

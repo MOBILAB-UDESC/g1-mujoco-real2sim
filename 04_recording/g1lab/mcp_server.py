@@ -48,7 +48,7 @@ JOINT_LOWER = np.array([-3.09, -1.59, -2.62, -1.05, -1.97, -1.61, -1.61,
                         -3.09, -2.25, -2.62, -1.05, -1.97, -1.61, -1.61])
 JOINT_UPPER = np.array([2.67, 2.25, 2.62, 2.09, 1.97, 1.61, 1.61,
                         2.67, 1.59, 2.62, 2.09, 1.97, 1.61, 1.61])
-# Arm rest pose of the lab sim (sim/lab_scene.py ARM_START = mean first frame of the real episodes).
+# Arm rest pose of the lab sim (03_real2sim/lab_scene.py ARM_START = mean first frame of the real episodes).
 REST_POSE = np.array([0.188, -0.055, -0.177, -0.164, 0.069, -0.289, 0.079,
                       0.155, 0.026, 0.031, -0.247, -0.160, -0.074, -0.143])
 

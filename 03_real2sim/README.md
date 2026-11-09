@@ -11,6 +11,7 @@
 
 - [Stage 1](../01_teleop/README.md) installed. [Stage 2](../02_wrist_cameras/README.md) read (the lab scene uses the wrist cameras).
 - For Part B: the `g1lab` env (`install/setup_g1lab_env.sh`, see [stage 4](../04_recording/README.md)), `ffmpeg` (`sudo apt install ffmpeg`), and a LeRobot dataset recorded on your real robot.
+- Blender 4.x and `uv`: only for step 2 (Blender script) and the STEP converter.
 - New words (real2sim, sim2real, MJCF, add-on, domain randomization): see the [glossary](../docs/GLOSSARY.md).
 
 > The calibration numbers live in the code ([lab_scene.py](lab_scene.py), [scene_lab.xml](scene_lab.xml), [calib/photometric.json](calib/photometric.json)), not in this guide. How close the copy is, and where it is not, is listed in [section 5](#5-how-close-is-it).
@@ -85,7 +86,7 @@ scripts/run_sim.sh --scene lab --randomize
 | `--seed N` | Random seed for `--randomize` |
 | `--head-fovy DEG` | Override the head camera's vertical field of view |
 
-These three options come from the add-on. They work, but `scripts/run_sim.sh --help` does not list them.
+These three options come from the add-on. `scripts/run_sim.sh --scene lab --help` lists them.
 
 ## 5. How close is it
 
@@ -123,6 +124,8 @@ source scripts/env.sh g1lab
 
 ## 2. Model the props
 
+Steps 2-3 regenerate files that are already in git (`blender_build_lab.py` also writes an older wrapped box). Skip them to keep ours; `git checkout 03_real2sim/assets/lab` restores them.
+
 Two options. Mix them freely.
 
 | Option | When | Example |
@@ -148,17 +151,12 @@ uv run --with cascadio --with trimesh python 03_real2sim/tools/step_to_stl.py pa
 | Script | What it makes | Input |
 |---|---|---|
 | [assets/lab/make_textures.py](assets/lab/make_textures.py) | Tiling textures for desk, cardboard and bubble wrap. Colours are sampled from clean patches of the photos; grain and patterns are synthesised. | `assets/lab/ref/*.jpg` |
-| `assets/lab/make_wrapped_box.py` | The wrapped box's final mesh (a soft, bulging box) and its texture, built **from frames the robot's own cameras recorded**: the head camera for the face toward the robot and the top, wrist-camera close-ups for the faces the palms squeeze. Needs no Blender. | `calib/real_refs/` (step 5) |
 
 ```bash
 python 03_real2sim/assets/lab/make_textures.py
 ```
 
-```bash
-python 03_real2sim/assets/lab/make_wrapped_box.py
-```
-
-Why use the robot's own frames: the texture then has the right detail at the scale each camera sees the object, which a phone photo does not give.
+The wrapped box's final look (mesh and texture) is made later, in step 5: it needs frames from the real recordings.
 
 ## 4. Place everything by your measurements
 
@@ -173,10 +171,12 @@ You should see your scene around the robot. `--scene` accepts any environment MJ
 
 ## 5. Record on the real robot and extract references
 
-You need a LeRobot dataset of the real task (ours: 52 episodes). Get ours from the Hub:
+You need a LeRobot dataset of the real task (ours: 52 episodes). Ours is on the Hub.
+
+The datasets are not public yet: until they are, use your own recordings or ask the lab for the folders.
 
 ```bash
-hf download <LAB_HF_ORG>/g1_pick_cube_real --repo-type dataset --local-dir datasets/pick_cube_real
+hf download "<LAB_HF_ORG>/g1_pick_cube_real" --repo-type dataset --local-dir datasets/pick_cube_real
 ```
 
 Extract joint states and camera frames for calibration:
@@ -197,7 +197,37 @@ You should see one line per episode, like `episode 0: 333 frames, dumped [0, 60,
 | `--video-cams` | Every frame of those cameras, small and grey | `fit_wrist_rotation.py` |
 | `--color-step N` | Every Nth frame of all cameras, small, in colour | `fit_materials.py`, `fit_room.py` |
 
-## 6. Calibrate the cameras against the real recordings
+Now build the wrapped box's final look from those frames:
+
+| Script | What it makes | Input |
+|---|---|---|
+| [assets/lab/make_wrapped_box.py](assets/lab/make_wrapped_box.py) | The wrapped box's final mesh (a soft, bulging box) and its texture, built **from frames the robot's own cameras recorded**: the head camera for the face toward the robot and the top, wrist-camera close-ups for the faces the palms squeeze. Needs no Blender. | `calib/real_refs/` |
+
+```bash
+python 03_real2sim/assets/lab/make_wrapped_box.py
+```
+
+- It replaces the first wrapped box of steps 2-3 (same file names, so the scene file does not change).
+- Why use the robot's own frames: the texture then has the right detail at the scale each camera sees the object, which a phone photo does not give.
+
+## 6. Get the object start poses from kinematics
+
+Where was the object in each real episode? The robot tells you: at the moment of the grasp the object sits between the palms. Forward kinematics of the recorded joints gives that point.
+
+```bash
+python 03_real2sim/tools/kinematic_object_poses.py
+```
+
+You should see `52 episodes -> .../calib/kinematic_wrap.json`.
+
+- Use the mean as the object's start pose in the scene file and the spread as the randomization range.
+- [tools/fit_objects.py](tools/fit_objects.py) is an image-based cross-check: it estimates the object poses from the first head frame of each episode and writes `calib/object_fits.json`. It renders through the head camera, so run it after step 7.
+
+```bash
+python 03_real2sim/tools/fit_objects.py --episodes 0 7 23
+```
+
+## 7. Calibrate the cameras against the real recordings
 
 The idea: put the simulated robot at the **recorded joint angles** of a real frame, render the sim cameras, and compare with the real image. Then adjust the camera pose until they match.
 
@@ -213,39 +243,22 @@ Then fit:
 
 | Tool | What it finds | How |
 |---|---|---|
-| [tools/fit_wrist_rotation.py](tools/fit_wrist_rotation.py) | Orientation of a wrist camera on the wrist (and optionally its focal length) | The wrist's rotation between two frames is known from the joints. The background's motion in the image then fixes the camera's orientation. |
-| [tools/fit_head_full.py](tools/fit_head_full.py) | Head camera pitch, position offset and field of view | Compares silhouettes (object at its known position, desk, gloves) between real and sim first frames |
+| [tools/fit_wrist_rotation.py](tools/fit_wrist_rotation.py) | Orientation of the wrist cameras on the wrists (and optionally their focal length) | The wrist's rotation between two frames is known from the joints. The background's motion in the image then fixes the camera's orientation. |
+| [tools/fit_head_full.py](tools/fit_head_full.py) | Head camera pitch, position offset and field of view | Compares silhouettes (object at its position from step 6, desk, gloves) between real and sim first frames |
 | [tools/fit_head_desk.py](tools/fit_head_desk.py) | A refinement of the head camera using only the desk and the gloves | Useful before the object positions are known |
 
 ```bash
-python 03_real2sim/tools/fit_wrist_rotation.py left
+python 03_real2sim/tools/fit_wrist_rotation.py
 ```
 
 ```bash
 FIXED_FOVY=43 python 03_real2sim/tools/fit_head_full.py
 ```
 
-- `fit_wrist_rotation.py` takes `left` or `right`. Set `FIXED_F=<focal length in pixels at 640x480>` to keep the datasheet focal length.
-- `fit_head_full.py` searches the field of view too unless `FIXED_FOVY` is set. It needs step 7 first (`calib/kinematic_wrap.json`).
+- `fit_wrist_rotation.py` fits both wrists and prints a `WRIST_CAM_CALIB[...]` line for each; copy the `quat` values. Set `FIXED_F=<focal length in pixels at 640x480>` to keep the datasheet focal length.
+- `fit_head_full.py` searches the field of view too unless `FIXED_FOVY` is set. It reads `calib/kinematic_wrap.json` from step 6.
 - The tools **print** the fitted values. Copy them into your add-on: the wrist camera pose is in `WRIST_CAM_CALIB` in [../02_wrist_cameras/wrist_cameras.py](../02_wrist_cameras/wrist_cameras.py), the head camera constants are at the top of [lab_scene.py](lab_scene.py).
 - Run `calibrate_replay.py` again after each change and look at the blend.
-
-## 7. Get the object start poses from kinematics
-
-Where was the object in each real episode? The robot tells you: at the moment of the grasp the object sits between the palms. Forward kinematics of the recorded joints gives that point.
-
-```bash
-python 03_real2sim/tools/kinematic_object_poses.py
-```
-
-You should see `52 episodes -> .../calib/kinematic_wrap.json`.
-
-- Use the mean as the object's start pose in the scene file and the spread as the randomization range.
-- [tools/fit_objects.py](tools/fit_objects.py) is an image-based cross-check: it estimates the object poses from the first head frame of each episode and writes `calib/object_fits.json`.
-
-```bash
-python 03_real2sim/tools/fit_objects.py --episodes 0 7 23
-```
 
 ## 8. Model the room behind the table
 
@@ -290,7 +303,7 @@ TEXTURE_GAIN_START=1 python 03_real2sim/tools/fit_materials.py
 
 ## 10. Validate: replay the real actions in the sim
 
-The physics check. Each real episode starts from its recorded first state, the object is placed at its position from step 7, and the recorded actions are replayed open loop.
+The physics check. Each real episode starts from its recorded first state, the object is placed at its position from step 6, and the recorded actions are replayed open loop.
 
 ```bash
 python 03_real2sim/tools/replay_real_actions.py --episodes 0 7 23 --video replay.mp4
@@ -306,7 +319,7 @@ You should see one line per episode and a summary like `SUCCESS n/N  lifted>15cm
 
 So that a policy trained in sim does not depend on one exact picture:
 
-- Object poses: `OBJECT_RANGES` in [lab_scene.py](lab_scene.py). Use the spread measured in step 7.
+- Object poses: `OBJECT_RANGES` in [lab_scene.py](lab_scene.py). Use the spread measured in step 6.
 - Appearance: `LabTask.randomize_appearance` changes light intensity and direction, material tints and camera pose by small amounts.
 - Motion: the scripted policy of stage 4 also varies speed, grasp height and start pose.
 
@@ -330,7 +343,7 @@ Put the module in a folder that is on `PYTHONPATH` (the stage folders are, throu
 - **`No such file ... calib/real_refs/...`**: run step 5 first, with the option that tool needs (see the table in step 5).
 - **`ffmpeg: not found`** in `extract_real_refs.py`: `sudo apt install ffmpeg`.
 - **`calibrate_replay.py` shows a black "real" tile**: that frame was not extracted. Use frame numbers you passed to `--frames` in step 5.
-- **The head camera sees the inside of the robot's head**: Unitree's head mesh is a closed shell. `lab_scene.py` hides it from the cameras (render group 5) and shows it only in the desktop viewer. Do the same in your add-on.
+- **The head camera sees the inside of the robot's head**: Unitree's head mesh is a closed shell. `lab_scene.py` hides it from the cameras (render group 5) and shows it only in the desktop viewer. The pelvis and legs are hidden from the cameras the same way (no camera sees them behind the desk, and it saves render time). Do the same in your add-on.
 - **Objects jump at reset with `--randomize`**: two start ranges overlap. `LabTask.reset_objects` keeps a minimum gap between our two boxes; add the same check for your objects.
 - **`--randomize` is "unrecognized"**: it only exists together with `--scene lab` (or your own add-on that defines it).
 

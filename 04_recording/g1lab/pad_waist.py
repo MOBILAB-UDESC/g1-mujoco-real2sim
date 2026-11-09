@@ -5,7 +5,7 @@ is exact. This lets real and sim (waist-turning) episodes be merged and trained 
 tables and metadata change (data parquet, per-episode stats, stats.json, info.json); the videos are
 copied as they are.
 
-    python -m g1lab.pad_waist pick_cubeDataset/pick_cubeZip datasets/real_waist
+    python -m g1lab.pad_waist datasets/pick_cube_real datasets/real_waist
 """
 
 import argparse
