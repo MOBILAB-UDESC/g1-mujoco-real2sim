@@ -53,6 +53,16 @@ def main():
           f"action {tuple(item['action'].shape)}, cameras {[c.split('.')[-1] for c in cams]} "
           f"{tuple(item[cams[0]].shape) if cams else ''}")
 
+    # Decode the first and last frame of every episode: wrong video offsets in the episode metadata (a merged
+    # dataset, see 05_training/merge_datasets.py --repair) only show up when those frames are actually read.
+    broken = []
+    for e, (lo, hi) in enumerate(zip(ds.meta.episodes["dataset_from_index"], ds.meta.episodes["dataset_to_index"])):
+        try:
+            ds[int(lo)], ds[int(hi) - 1]
+        except Exception as err:
+            broken.append((e, str(err).splitlines()[-1][:80]))
+    print(f"video frames of every episode decode: {'yes' if not broken else f'NO, {len(broken)} episodes fail, e.g. {broken[0]}'}")
+
     table = ds.hf_dataset.with_format("numpy")
     state, action, ep = np.stack(table["observation.state"]), np.stack(table["action"]), np.asarray(table["episode_index"])
     lengths = np.bincount(ep) / info["fps"]
