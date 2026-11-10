@@ -69,10 +69,36 @@ def episode_ranges(counts):
     return out
 
 
+def repair_video_timestamps(root):
+    """Recompute every episode's from/to timestamp inside its video file; returns how many were wrong.
+
+    lerobot 0.4.1's aggregate_datasets gets them wrong once a merged video file is closed and the next one
+    starts while more sources follow: episodes in the later file keep the earlier file's duration as an offset.
+    Such a dataset loads, but training stops with `Invalid frame index`. The files themselves are right
+    (episodes are concatenated in order), so the timestamps follow from the episode lengths.
+    """
+    import pandas as pd
+    root, fixed = Path(root), 0
+    fps = load_info(root)["fps"]
+    files = sorted((root / "meta" / "episodes").rglob("*.parquet"))
+    ep = pd.concat([pd.read_parquet(f).assign(_src=str(f)) for f in files]).sort_values("episode_index")
+    for col in [c for c in ep.columns if c.startswith("videos/") and c.endswith("/from_timestamp")]:
+        key = col[: -len("from_timestamp")]
+        start = ep.groupby([key + "chunk_index", key + "file_index"])["length"].transform(lambda s: s.cumsum() - s) / fps
+        fixed += int(((ep[col] - start).abs() > 0.5 / fps).sum())
+        ep[col], ep[key + "to_timestamp"] = start, start + ep["length"] / fps
+    if fixed:
+        for f in files:
+            ep[ep["_src"] == str(f)].drop(columns="_src").to_parquet(f, index=False)
+    return fixed
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("sources", nargs="+", help="dataset dirs, in the order their episodes should appear")
-    p.add_argument("--out", required=True, help="output dataset dir (must not exist)")
+    p.add_argument("--repair", action="store_true",
+                   help="only fix the video timestamps of already merged dataset dirs (the sources), in place")
+    p.add_argument("--out", help="output dataset dir (must not exist)")
     p.add_argument("--repo-id", default=None, help="default: local/<basename of --out>")
     p.add_argument("--check-only", action="store_true", help="only check compatibility")
     return p.parse_args(argv)
@@ -81,6 +107,12 @@ def parse_args(argv=None):
 def main(argv=None):
     a = parse_args(argv)
     roots = [Path(s).resolve() for s in a.sources]
+    if a.repair:
+        for r in roots:
+            print(f"{r}: fixed {repair_video_timestamps(r)} episode video timestamps")
+        return
+    if not a.out:
+        raise SystemExit("--out is required")
     if len(roots) < 2:
         raise SystemExit("need at least two sources")
     infos = [load_info(r) for r in roots]
@@ -104,6 +136,9 @@ def main(argv=None):
     aggregate_datasets([f"local/{r.name}" for r in roots], repo_id, roots=roots, aggr_root=out,
                        data_files_size_in_mb=DATA_FILES_SIZE_IN_MB, video_files_size_in_mb=VIDEO_FILES_SIZE_IN_MB,
                        chunk_size=CHUNKS_SIZE)
+    fixed = repair_video_timestamps(out)
+    if fixed:
+        print(f"fixed {fixed} episode video timestamps (lerobot 0.4.1 aggregate bug)")
     ds = LeRobotDataset(repo_id, root=out)
     print(f"wrote {out} ({repo_id}): {ds.meta.total_episodes} episodes, {ds.meta.total_frames} frames, "
           f"tasks {list(ds.meta.tasks.index)}")
