@@ -90,6 +90,25 @@ Training happens on another machine. Two routes:
 |---|---|
 | Any GPU PC or cloud GPU | Clone this repo there, run `install/install.sh` and `install/setup_g1lab_env.sh`, install a CUDA build of PyTorch in the `g1lab` env (command below), copy or download the dataset, and run the training command. |
 
+
+
+```bash
+git clone https://github.com/MOBILAB-UDESC/g1-mujoco-real2sim.git
+cd g1-mujoco-real2sim
+```
+
+Then, on the node:
+
+```bash
+```
+
+2. `smoke` downloads the dataset and trains 200 steps. You should see `SMOKE OK`.
+4. `status` shows the last log lines and the checkpoints.
+
+- LeRobot 0.4.1 is used on purpose: it is the version `run_act.py` and Unitree's tools use, so the checkpoint loads without conversion.
+
+### Any GPU PC or cloud GPU
+
 CUDA build of PyTorch (the setup script installs the CPU build). Pick the index that matches your CUDA version on pytorch.org:
 
 ```bash
