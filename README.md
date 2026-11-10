@@ -127,13 +127,13 @@ g1-mujoco-real2sim/
 
 ## 7. Datasets
 
-Datasets are not in git. They live on the Hugging Face Hub (the organisation is written `<LAB_HF_ORG>` until it is decided, see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
+Datasets are not in git. They live on the Hugging Face Hub, in the [mobilab-udesc](https://huggingface.co/mobilab-udesc) organisation.
 
 | Dataset | Source | Episodes | Joints | robot_type |
 |---|---|---|---|---|
-| `<LAB_HF_ORG>/g1_pick_cube_real` | Real robot, VR teleop | 52 | 14 arms | `Unitree_G1_ArmsOnly_3Cam` |
-| `<LAB_HF_ORG>/g1_pick_cube_real_waist` | Same, padded with waist = 0 | 52 | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
-| `<LAB_HF_ORG>/g1_box_into_box_sim_scripted` | Lab sim, scripted, randomized | 100 (48,056 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
+| `mobilab-udesc/g1_pick_cube_real` | Real robot, VR teleop | 52 | 14 arms | `Unitree_G1_ArmsOnly_3Cam` |
+| `mobilab-udesc/g1_pick_cube_real_waist` | Same, padded with waist = 0 | 52 | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
+| `mobilab-udesc/g1_box_into_box_sim_scripted` | Lab sim, scripted, randomized | 100 (48,056 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
 
 All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist`, `cam_right_wrist`.
 

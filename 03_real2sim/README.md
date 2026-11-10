@@ -176,7 +176,7 @@ You need a LeRobot dataset of the real task (ours: 52 episodes). Ours is on the 
 The datasets are not public yet: until they are, use your own recordings or ask the lab for the folders.
 
 ```bash
-hf download "<LAB_HF_ORG>/g1_pick_cube_real" --repo-type dataset --local-dir datasets/pick_cube_real
+hf download "mobilab-udesc/g1_pick_cube_real" --repo-type dataset --local-dir datasets/pick_cube_real
 ```
 
 Extract joint states and camera frames for calibration:

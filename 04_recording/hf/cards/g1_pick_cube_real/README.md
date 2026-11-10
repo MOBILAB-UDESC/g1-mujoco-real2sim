@@ -24,7 +24,7 @@ Real Unitree G1 (29 DoF) teleoperated with [xr_teleoperate](https://github.com/u
 - **Episodes / frames:** 52 / 17345 at 30 fps
 - **robot_type:** `Unitree_G1_ArmsOnly_3Cam`
 - **Joints (14):** `kLeftShoulderPitch, kLeftShoulderRoll, kLeftShoulderYaw, kLeftElbow, kLeftWristRoll, kLeftWristPitch, kLeftWristYaw`, then the same seven for the right arm. These are G1 motors 15–28.
-- **Lab:** MOBILAB / UDESC (<LAB_HF_ORG>)
+- **Lab:** MOBILAB / UDESC (mobilab-udesc)
 
 ## Features
 
@@ -36,13 +36,13 @@ Real Unitree G1 (29 DoF) teleoperated with [xr_teleoperate](https://github.com/u
 | `observation.images.cam_left_wrist` | video | 480x640x3 | left wrist Intel D405 |
 | `observation.images.cam_right_wrist` | video | 480x640x3 | right wrist Intel D405 |
 
-The waist was not moved in these episodes. `<LAB_HF_ORG>/g1_pick_cube_real_waist` is the same data padded to 15 joints (waist yaw = 0), so it can be mixed with waist-turning sim data.
+The waist was not moved in these episodes. `mobilab-udesc/g1_pick_cube_real_waist` is the same data padded to 15 joints (waist yaw = 0), so it can be mixed with waist-turning sim data.
 
 ## Usage
 
 ```python
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-ds = LeRobotDataset("<LAB_HF_ORG>/g1_pick_cube_real")
+ds = LeRobotDataset("mobilab-udesc/g1_pick_cube_real")
 ```
 
 

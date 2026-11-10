@@ -27,11 +27,11 @@ Use your own from stage 4, or download ours:
 The datasets are not public yet: until they are, use your own recordings or ask the lab for the folders.
 
 ```bash
-hf download "<LAB_HF_ORG>/g1_pick_cube_real_waist" --repo-type dataset --local-dir datasets/real_waist
+hf download "mobilab-udesc/g1_pick_cube_real_waist" --repo-type dataset --local-dir datasets/real_waist
 ```
 
 ```bash
-hf download "<LAB_HF_ORG>/g1_box_into_box_sim_scripted" --repo-type dataset --local-dir datasets/sim_scripted_waist
+hf download "mobilab-udesc/g1_box_into_box_sim_scripted" --repo-type dataset --local-dir datasets/sim_scripted_waist
 ```
 
 You should see a `meta/`, `data/` and `videos/` folder in each.

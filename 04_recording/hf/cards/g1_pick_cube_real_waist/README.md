@@ -18,9 +18,9 @@ configs:
 
 This dataset was created using [LeRobot](https://github.com/huggingface/lerobot) (format v3.0, lerobot 0.4.1).
 
-This is the same 52 real episodes as `<LAB_HF_ORG>/g1_pick_cube_real`, in the 15-joint `Unitree_G1_ArmsWaist_3Cam` layout. `kWaistYaw` is appended to `observation.state` and `action` with the value **0**. That is exact, because the waist did not move in these recordings. The videos are unchanged. The conversion was done with `g1lab.pad_waist`, which also pads the per-episode and global stats.
+This is the same 52 real episodes as `mobilab-udesc/g1_pick_cube_real`, in the 15-joint `Unitree_G1_ArmsWaist_3Cam` layout. `kWaistYaw` is appended to `observation.state` and `action` with the value **0**. That is exact, because the waist did not move in these recordings. The videos are unchanged. The conversion was done with `g1lab.pad_waist`, which also pads the per-episode and global stats.
 
-The point of this layout is to mix the real data with sim episodes that do turn the waist (for example `<LAB_HF_ORG>/g1_box_into_box_sim_scripted`), using lerobot's `aggregate_datasets`. That function needs identical features.
+The point of this layout is to mix the real data with sim episodes that do turn the waist (for example `mobilab-udesc/g1_box_into_box_sim_scripted`), using lerobot's `aggregate_datasets`. That function needs identical features.
 
 - **Task:** `pick up cube.`
 - **Episodes / frames:** 52 / 17345 at 30 fps

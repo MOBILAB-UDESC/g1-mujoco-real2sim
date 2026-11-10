@@ -334,16 +334,16 @@ Datasets are not in git. The upload script only **prints** the commands; you rev
 
 ```bash
 hf auth login
-04_recording/hf/upload_datasets.sh "<LAB_HF_ORG>"
+04_recording/hf/upload_datasets.sh "mobilab-udesc"
 ```
 
 You should see, for each dataset found in `datasets/`, four commands: create a private dataset repo, upload the folder, upload the dataset card, and tag it `v3.0` (LeRobot refuses a Hub dataset without that tag).
 
 | Local folder (default) | Hub name | Card |
 |---|---|---|
-| `datasets/pick_cube_real` | `<LAB_HF_ORG>/g1_pick_cube_real` | [hf/cards/g1_pick_cube_real](hf/cards/g1_pick_cube_real/README.md) |
-| `datasets/real_waist` | `<LAB_HF_ORG>/g1_pick_cube_real_waist` | [hf/cards/g1_pick_cube_real_waist](hf/cards/g1_pick_cube_real_waist/README.md) |
-| `datasets/sim_scripted_waist` | `<LAB_HF_ORG>/g1_box_into_box_sim_scripted` | [hf/cards/g1_box_into_box_sim_scripted](hf/cards/g1_box_into_box_sim_scripted/README.md) |
+| `datasets/pick_cube_real` | `mobilab-udesc/g1_pick_cube_real` | [hf/cards/g1_pick_cube_real](hf/cards/g1_pick_cube_real/README.md) |
+| `datasets/real_waist` | `mobilab-udesc/g1_pick_cube_real_waist` | [hf/cards/g1_pick_cube_real_waist](hf/cards/g1_pick_cube_real_waist/README.md) |
+| `datasets/sim_scripted_waist` | `mobilab-udesc/g1_box_into_box_sim_scripted` | [hf/cards/g1_box_into_box_sim_scripted](hf/cards/g1_box_into_box_sim_scripted/README.md) |
 
 Other folders: set `REAL_DIR`, `REAL_WAIST_DIR` or `SIM_DIR` before the command. Maintainer notes: [docs/PUBLISHING.md](../docs/PUBLISHING.md).
 
