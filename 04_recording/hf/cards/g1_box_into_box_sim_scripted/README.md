@@ -38,6 +38,14 @@ The episodes are **simulated**. A MuJoCo Unitree G1 (29 DoF, gloved rubber hands
 
 The layout is the same as `<LAB_HF_ORG>/g1_pick_cube_real_waist`, so the two merge directly for real+sim training. The sim images are renders: expect a visual domain gap.
 
+## Good to know
+
+- **Appearance.** The scene is a real2sim copy of the lab desk: cameras, object poses, colours, image blur and noise are calibrated against the 52 real episodes of `<LAB_HF_ORG>/g1_pick_cube_real`. The wrapped box is textured from real camera frames. Every episode also has small random changes of lights, material tints and camera poses.
+- **Motion.** A scripted policy, not a human: reach, squeeze, lift, turn the waist, lower into the box, release, return. Speed, squeeze width, grasp height, lift clearance, waist angle and the start pose vary per episode. Episodes are 14-19 s long (mean 16 s) (the real teleoperated ones are about 11 s).
+- **Repeated frames.** The recording PC rendered the three cameras a little below the 30 Hz recording rate, so about one frame in ten repeats the previous one.
+- **Waist.** The waist yaw moves in every episode (range about 0.75 rad). The real set has waist = 0 throughout: train on a mix, not on the real set alone, if you want a 15-joint policy.
+- **Task text** differs from the real set (`pick up cube.`), which is xr_teleoperate's default text for the same task.
+
 ## Citation
 
 [More Information Needed]

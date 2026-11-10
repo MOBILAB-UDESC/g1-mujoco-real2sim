@@ -133,7 +133,7 @@ Datasets are not in git. They live on the Hugging Face Hub (the organisation is 
 |---|---|---|---|---|
 | `<LAB_HF_ORG>/g1_pick_cube_real` | Real robot, VR teleop | 52 | 14 arms | `Unitree_G1_ArmsOnly_3Cam` |
 | `<LAB_HF_ORG>/g1_pick_cube_real_waist` | Same, padded with waist = 0 | 52 | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
-| `<LAB_HF_ORG>/g1_box_into_box_sim_scripted` | Lab sim, scripted, randomized | 100 (being recorded) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
+| `<LAB_HF_ORG>/g1_box_into_box_sim_scripted` | Lab sim, scripted, randomized | 100 (48,056 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
 
 All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist`, `cam_right_wrist`.
 
@@ -151,8 +151,8 @@ All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist
 | Stage 3 lab scene | Cameras, objects, colours and image noise calibrated against the 52 real episodes. Known gaps (robot lean, background placement, glove shape) are listed in [stage 3, section 5](03_real2sim/README.md#5-how-close-is-it). |
 | `unitree_bridge` converter | Unit-tested with a stand-in module. **Untested against a real unitree_lerobot install.** |
 | Remote VLA client | Dream-1 path tested only against the local mock servers. A G1 needs a fine-tuned embodiment on the provider side. |
-| Scripted policy | About 45-50 % of attempts succeed. Only successful episodes are saved. |
-| Sim vs real episodes | Sim episodes are slower (about 17 s) than the real teleop ones (about 11 s). |
+| Scripted policy | About 50 % of attempts succeed (100 kept out of 200 for the published set). Only successful episodes are saved. |
+| Sim vs real episodes | Sim episodes are slower (about 16 s) than the real teleop ones (about 11 s). |
 | Training | Only a CPU smoke test runs on the development PC. Real training needs a GPU. |
 | Real-robot deployment (`run_act.py --target real`) | Implemented with safety limits and a checklist. **Not yet run on the robot.** |
 
