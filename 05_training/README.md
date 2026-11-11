@@ -243,10 +243,10 @@ Unitree's `unitree_lerobot` ships `eval_g1.py` for this job. We do not use it be
 
 ### Using Unitree's `eval_g1.py` anyway (our fork)
 
-If a PC should only use Unitree's repo, the branch `mobilab-waist-async` of our fork [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot/tree/mobilab-waist-async) has an `eval_g1.py` that runs both the usual 14-joint policies and our 15-joint (arms + waist) ones. File and script names are Unitree's; four files in `unitree_lerobot/eval_robot/` are changed.
+If a PC should only use Unitree's repo, the branch `mobilab` of our fork [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot) has an `eval_g1.py` that runs both the usual 14-joint policies and our 15-joint (arms + waist) ones. File and script names are Unitree's; four files in `unitree_lerobot/eval_robot/` are changed.
 
 ```bash
-git clone -b mobilab-waist-async https://github.com/MOBILAB-UDESC/unitree_lerobot.git
+git clone -b mobilab https://github.com/MOBILAB-UDESC/unitree_lerobot.git
 cd unitree_lerobot
 python unitree_lerobot/eval_robot/eval_g1.py \
     --policy.path=/path/to/pretrained_model \
