@@ -131,40 +131,68 @@ For each episode:
 
 ## 4. Source B: code-as-policy (scripted)
 
-The idea: instead of a person or a neural network, a **short Python program** decides the motion. It reads the object poses from the sim, computes where the hands must go, and moves them with inverse kinematics. An AI assistant can write such a program, or you can. Ours is [g1lab/scripted/box_into_box.py](g1lab/scripted/box_into_box.py), about 200 lines:
+The idea: instead of a person or a neural network, a **Python program** decides the motion. It reads the object poses from the sim, plans the whole episode on a copy of the simulator's model, and sends it. The example, [g1lab/scripted/box_into_box.py](g1lab/scripted/box_into_box.py), does this:
 
-1. Read the poses of both boxes (`rt/sim_state`).
-2. Reach beside the wrapped box, lower the hands, squeeze.
-3. Lift, turn the waist toward the cardboard box, carry.
-4. Lower inside, release, go back to rest.
+1. Read the poses and the size of both boxes (`rt/sim_state`).
+2. Turn the waist to face the wrapped box. Hands to both sides of it, 5-7 cm clear, below its top.
+3. Lower them beside the box, close in sideways, squeeze.
+4. Lift, turn the waist toward the cardboard box, reach over it, release.
+5. Hands back, fold the arms, turn back to the rest pose.
 
-Every episode is randomized (start pose, speed, squeeze width, grasp height, plus the sim's `--randomize`). About 45-50 % of attempts succeed. **Only successful episodes are saved.**
+What the planner guarantees, and why (a policy trained on the first version of this script failed on the real robot):
 
-Terminal 1:
+| Guarantee | Reason |
+|---|---|
+| The hands never pass over the box before the squeeze | On the robot the glove fingers landed on top of the box |
+| Arms at least 2.5 cm from the torso | The upper arm pressed against the torso and could not go down |
+| Arms and hands at least 1.2 cm from the cardboard box | Nothing may knock the open box |
+| No joint commanded faster than 0.85 rad/s | The robot-side runners limit commands to 1.0 rad/s |
+| Widths, heights and hand yaw follow the box's real size and pose | Upright or upside down, any side toward the robot |
+
+An episode is saved only if the box ends in the cardboard box **and** the measured motion kept these limits. About 45 % of attempts are saved; most of the others never start, because the planner finds no motion that keeps the limits for that scene.
+
+Terminal 1 (the box size is fixed per simulator run):
 
 ```bash
-scripts/run_sim.sh --scene lab --randomize --no-viewer
+scripts/run_sim.sh --scene lab --randomize --no-viewer --wrap-scale 1.08 1.06 1.07
 ```
 
 Terminal 2:
 
 ```bash
 source scripts/env.sh g1lab
-python -m g1lab.scripted.box_into_box --episodes 20 --root datasets/sim_scripted_waist --repo-id local/sim_scripted_waist
+python -m g1lab.scripted.box_into_box --episodes 20 --root datasets/sim_scripted_v2 --repo-id local/sim_scripted_v2
 ```
 
 You should see one line per attempt and a summary:
 
 ```
-[scripted] attempt 1: SUCCESS (5xx frames, {...}) -> 1/20
-[scripted] attempt 2: fail (5xx frames, {...}) -> 1/20
+[scripted] attempt 1: SUCCESS (7xx frames, {...}) -> 1/20
+[scripted] attempt 2: no plan: lower beside the box: arm or hand 0.9 cm from the cardboard box (0 frames, {}) -> 1/20
 ...
-[scripted] 20 successful of 43 attempts (47%)
 ```
 
-- Remove `--no-viewer` to watch. Omit `--root` to run without recording.
-- It stops after 3 x `--episodes` attempts unless you set `--max-attempts`.
+- Remove `--no-viewer` to watch. A second window then shows the three camera views. Omit `--root` to run without recording.
 - The dataset has 15 joints (`Unitree_G1_ArmsWaist_3Cam`).
+
+**Try it without the simulator.** `--offline` runs the same policy on a private copy of the simulator, with physics but without cameras and faster than real time (about 3 s per episode). Nothing can be recorded; it is for trying changes and for checking how much of the scene range works:
+
+```bash
+python -m g1lab.scripted.box_into_box --offline --episodes 60 --max-attempts 60 --log /tmp/sweep.jsonl
+python -m g1lab.scripted.plan_check --scenes 60        # planning only, no physics
+```
+
+**Record a balanced dataset in parts.** Episodes are only kept when they succeed, so random scenes would give a dataset of easy scenes. The recorder first writes a schedule in which every episode has its strata (upright or upside down, facing side, position, desk offset, light level), each equally often, and keeps trying scenes of a stratum until one succeeds. It records in parts of 5 episodes, each with its own box size; a shutdown costs at most the part in progress, and running the script again continues:
+
+```bash
+EPISODES=200 PART=5 04_recording/record_scripted_parts.sh datasets/parts_v2
+source scripts/env.sh g1lab
+python -m g1lab.scripted.schedule --coverage datasets/parts_v2/attempts.jsonl --schedule datasets/parts_v2/schedule.json
+python 05_training/merge_datasets.py --out datasets/sim_scripted_v2 --repo-id local/sim_scripted_v2 datasets/parts_v2/part_*
+```
+
+- `HUB_REPO=<org>/<name>` uploads every finished part to that Hub dataset (under `parts/`), every 10 episodes.
+- The second command prints planned / recorded / attempts per stratum.
 
 Everything goes through one class, `G1Arms` ([g1lab/robot_io.py](g1lab/robot_io.py)), which talks to the sim and to the real robot the same way:
 

@@ -168,6 +168,7 @@ Options for `scripts/run_sim.sh` (full list: `scripts/run_sim.sh --help`):
 | `--addon NAME` | none | Load an add-on, e.g. `wrist_cameras` (stage 2). Repeatable. |
 | `--free` | off | Start free-standing |
 | `--no-viewer` | off | No desktop window. Leaves more GPU for the headset stream. |
+| `--no-camera-window` | off | With the desktop window, a second window shows what the robot's cameras see; this turns it off. |
 | `--walk-scale`, `--turn-scale` | 1.0, 2.0 | Multipliers on joystick walking speed and turning rate |
 | `--cam-pitch`, `--cam-pos`, `--baseline`, `--fovy` | 40 deg, head mount, 0.064 m, 90 deg | Head stereo camera of the demo scene |
 | `--img-w`, `--img-h`, `--fps` | 640, 480, 30 | Image size of one eye and frame rate |

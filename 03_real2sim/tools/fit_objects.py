@@ -3,7 +3,7 @@
 Real masks come from colour (bubble wrap = bright, unsaturated; cardboard = tan); sim masks from
 MuJoCo's segmentation render through the calibrated head camera, with the arms at the recorded
 state. A coarse-to-fine grid search maximises the IoU per object. Prints per-episode poses and the
-mean / range to put into scene_lab.xml and lab_scene.OBJECT_RANGES.
+mean / range to put into scene_lab.xml and lab_scene.SCENE.
 
     python 03_real2sim/tools/fit_objects.py [--episodes 0 1 2 ...]
 """

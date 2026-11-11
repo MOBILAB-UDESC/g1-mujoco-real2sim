@@ -72,7 +72,21 @@ The same flag is published on the DDS topic `rt/rewards_state`, in the format Un
 ## 4. Reset and randomize
 
 - Key **0** in the MuJoCo window resets the robot and the objects.
-- With `--randomize`, every reset draws new object start poses, light levels, material tints and a small camera jitter.
+- With `--randomize`, every reset draws a new scene:
+
+| What | Range |
+|---|---|
+| Wrapped box | Upright or upside down; one of its four sides toward the robot, +-10 deg; anywhere the arms reach (centre at most 44 cm from the robot: about 11 cm front to back, 26 cm sideways); at least 14 cm from the cardboard box |
+| Desk, with both boxes on it | 5 cm nearer to 2 cm farther from the robot, 5 cm toward its centre line to 2 cm away, +-2 deg |
+| Cardboard box on the desk | +-1 cm, +-2 deg (it is glued on the real setup) |
+| Light | Level dim (0.55-0.8), normal (0.8-1.2) or bright (1.2-1.5); each ceiling light x0.8-1.25; warm / cool tint +-6 % |
+| Cameras | Position +-5 mm, direction +-1 deg, field of view +-4 % |
+| Materials | Colour tint +-10 % |
+
+- The box **size** is set per simulator run: `--wrap-scale 1.08 1.06 1.07` (the real box is 5-10 % bigger than the calibrated 22.6 x 22.6 x 26.6 cm).
+- The ranges are limited by the robot, not by taste: its arms reach about 40 cm forward at grasp height. A desk farther away than this, or a box farther out, cannot be handled.
+- The wrapped box gives when squeezed: its four sides are spring-loaded panels (about 8 mm in a firm grip; `--rigid-box` turns that off). Against the desk and the cardboard box it counts as 2 cm smaller on every side, like bubble wrap that squashes.
+- A reset request may carry a JSON scene description instead of a number, to ask for a specific kind of scene (`lab_scene.sample_scene`); the scripted recorder uses that to balance its dataset.
 
 ```bash
 scripts/run_sim.sh --scene lab --randomize
@@ -82,7 +96,9 @@ scripts/run_sim.sh --scene lab --randomize
 
 | Option (lab scene only) | What it does |
 |---|---|
-| `--randomize` | Random object start poses and appearance on every reset |
+| `--randomize` | A new random scene on every reset (table above) |
+| `--wrap-scale SX SY SZ` | Size of the wrapped box for this run |
+| `--rigid-box` | Wrapped box without the spring-loaded sides |
 | `--seed N` | Random seed for `--randomize` |
 | `--head-fovy DEG` | Override the head camera's vertical field of view |
 
