@@ -45,6 +45,7 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 ds = LeRobotDataset("mobilab-udesc/g1_pick_cube_real")
 ```
 
+Train ACT: `lerobot-train --dataset.repo_id=mobilab-udesc/g1_pick_cube_real --policy.type=act --policy.device=cuda`.
 
 ## Citation
 

@@ -12,6 +12,7 @@
 **Prerequisites**
 
 - [Stage 4](../04_recording/README.md): the `g1lab` env and at least one dataset.
+- A GPU machine for real training (cloud, another PC, or a server). Your PC only runs the smoke test and the rollouts.
 - New words (ACT, policy, checkpoint, action chunk, closed loop): see the [glossary](../docs/GLOSSARY.md).
 
 In every new terminal:
@@ -88,24 +89,32 @@ Training happens on another machine. Two routes:
 
 | Route | How |
 |---|---|
+| GPU machine with Docker (server, cluster node) | Use `05_training/docker/train_act_docker.sh` (below). Nothing is installed on the machine itself. |
 | Any GPU PC or cloud GPU | Clone this repo there, run `install/install.sh` and `install/setup_g1lab_env.sh`, install a CUDA build of PyTorch in the `g1lab` env (command below), copy or download the dataset, and run the training command. |
 
+### GPU machine with Docker
 
+On the GPU machine (it needs Docker with NVIDIA GPU support):
 
 ```bash
 git clone https://github.com/MOBILAB-UDESC/g1-mujoco-real2sim.git
 cd g1-mujoco-real2sim
+05_training/docker/train_act_docker.sh setup
+05_training/docker/train_act_docker.sh smoke
+05_training/docker/train_act_docker.sh train
+05_training/docker/train_act_docker.sh status
 ```
 
-Then, on the node:
-
-```bash
-```
-
+1. `setup` (once per machine) pulls the official LeRobot GPU image and installs LeRobot 0.4.1 with a CUDA 12.8 PyTorch in a venv in `~/lerobot_data` (change with `SCRATCH=/some/disk`). You should see a line ending in `cuda True` and the GPU name.
 2. `smoke` downloads the dataset and trains 200 steps. You should see `SMOKE OK`.
+3. `train` starts the real run in a detached container (100,000 steps, batch 16). It keeps running after you log out.
 4. `status` shows the last log lines and the checkpoints.
 
+- Default dataset: `mobilab-udesc/g1_box_into_box_sim_scripted`. Another one: `DATASET=mobilab-udesc/<name> NAME=<run> 05_training/docker/train_act_docker.sh train`.
 - LeRobot 0.4.1 is used on purpose: it is the version `run_act.py` and Unitree's tools use, so the checkpoint loads without conversion.
+- Back up checkpoints to the Hub while training runs: `PUSH_REPO=<org>/<model> 05_training/docker/train_act_docker.sh backup` (see the script header for the token).
+- Copy the checkpoint to your PC: `rsync -a <machine>:lerobot_data/outputs/act-box-sim/checkpoints/last/pretrained_model/ outputs/act-box-sim/`
+- When done: `05_training/docker/train_act_docker.sh stop`.
 
 ### Any GPU PC or cloud GPU
 
@@ -232,18 +241,20 @@ Unitree's `unitree_lerobot` ships `eval_g1.py` for this job. We do not use it be
 
 `run_act.py` loads the same LeRobot checkpoint format, so a policy trained with `unitree_lerobot` or plain `lerobot-train` runs with it.
 
-### Using Unitree's `eval_g1.py` anyway (patch)
+### Using Unitree's `eval_g1.py` anyway (our fork)
 
-If a PC only has Unitree's repo, `05_training/unitree_lerobot/eval_g1_waist_async.patch` makes its `eval_g1.py` run our 15-joint policies. It was made against `unitree_IL_lerobot` commit `41c2805` and changes four files in `unitree_lerobot/eval_robot/`.
+If a PC should only use Unitree's repo, the branch `mobilab-waist-async` of our fork [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot/tree/mobilab-waist-async) has an `eval_g1.py` that runs both the usual 14-joint policies and our 15-joint (arms + waist) ones. File and script names are Unitree's; four files in `unitree_lerobot/eval_robot/` are changed.
 
 ```bash
-cd unitree_IL_lerobot
-git apply /path/to/g1-mujoco-real2sim/05_training/unitree_lerobot/eval_g1_waist_async.patch
+git clone -b mobilab-waist-async https://github.com/MOBILAB-UDESC/unitree_lerobot.git
+cd unitree_lerobot
 python unitree_lerobot/eval_robot/eval_g1.py \
     --policy.path=/path/to/pretrained_model \
     --repo_id=mobilab-udesc/g1_box_into_box_sim_scripted \
     --arm=G1_29 --ee=none --waist=true --frequency=30
 ```
+
+Leave out `--waist=true` for a policy without the waist joint. The same changes are in `05_training/unitree_lerobot/eval_g1_waist_async.patch` (made against Unitree's commit `41c2805`; apply with `git apply`).
 
 | Change | What it does |
 |---|---|

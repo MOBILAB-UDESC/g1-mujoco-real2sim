@@ -6,7 +6,8 @@
 #       --steps 100 --batch-size 2 --device cpu          # CPU smoke test (this PC has no GPU)
 #   ... -- --policy.chunk_size=50 --policy.n_action_steps=50   # anything after -- goes to lerobot-train
 #
-# --policy.device=cuda; copy the dataset dir there (or pull it from the Hub, see 04_recording/hf/) and pass the
+# Real training runs on a GPU machine (see 05_training/docker/train_act_docker.sh), with the same
+# lerobot-train command and --policy.device=cuda; copy the dataset dir there (or pull it from the Hub, see 04_recording/hf/) and pass the
 # same flags. The checkpoint to deploy with 05_training/run_act.py is
 #   <output>/checkpoints/last/pretrained_model   (config.json, model.safetensors, policy_*processor*.json + stats)
 #
@@ -45,7 +46,7 @@ if [ -e "$OUTPUT" ] && [ "$RESUME" != true ]; then
   echo "$OUTPUT exists; pick a new --output or pass --resume" >&2; exit 1
 fi
 
-# Use the g1lab env unless lerobot-train is already on PATH (e.g. inside the cluster's Docker image).
+# Use the g1lab env unless lerobot-train is already on PATH (e.g. inside a LeRobot Docker image).
 if ! command -v lerobot-train >/dev/null 2>&1; then
   source "$(dirname "${BASH_SOURCE[0]}")/../scripts/env.sh" "${G1LAB_ENV:-g1lab}"
 fi
