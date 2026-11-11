@@ -14,7 +14,7 @@ Without --motion, xr_teleoperate drives every joint through rt/lowcmd (like debu
 With --motion, this file plays Unitree's motion controller: it owns legs and waist, blends the arms
 from rt/arm_sdk, and turns LocoClient.Move(vx, vy, vyaw) into motion. vx/vy walk in the direction the
 torso faces; vyaw twists the waist (look around), turning the whole body past the waist limit.
-If the sender moves the waist yaw target on rt/arm_sdk (teleop --waist-stick, run_act --motion-waist), the
+If the sender moves the waist yaw target on rt/arm_sdk (teleop --waist-stick, run_act --motion), the
 sim behaves like the real robot instead: the waist follows rt/arm_sdk and vyaw turns the whole body.
 Walking is kinematic (the "gantry" carries the pelvis while the legs animate), so it needs FIXED mode.
 
@@ -353,7 +353,7 @@ class G1XrSim:
         self.arm_sdk_weight = 0.0
         self.last_arm_sdk_time = None
         # Waist yaw target on rt/arm_sdk. xr_teleoperate keeps it at the start angle; a sender that moves it
-        # (this repo's teleop --waist-stick, run_act --motion-waist) takes the waist over, as on the real robot.
+        # (this repo's teleop --waist-stick, run_act --motion) takes the waist over, as on the real robot.
         self.arm_sdk_waist = 0.0
         self.arm_sdk_waist0 = None
         self.waist_from_sdk = False

@@ -1,5 +1,5 @@
 diff --git a/unitree_lerobot/eval_robot/eval_g1.py b/unitree_lerobot/eval_robot/eval_g1.py
-index 20588a2..b4f83fc 100644
+index 20588a2..38090a4 100644
 --- a/unitree_lerobot/eval_robot/eval_g1.py
 +++ b/unitree_lerobot/eval_robot/eval_g1.py
 @@ -5,8 +5,11 @@ Refer to:   lerobot/lerobot/scripts/eval.py
@@ -26,7 +26,7 @@ index 20588a2..b4f83fc 100644
      to_list,
      to_scalar,
      EvalRealConfig,
-@@ -68,27 +73,78 @@ def eval_policy(
+@@ -68,27 +73,75 @@ def eval_policy(
          preprocessor.reset()
          postprocessor.reset()
  
@@ -72,12 +72,9 @@ index 20588a2..b4f83fc 100644
 +                f"policy state has {state_dim} values, but arm={cfg.arm} ee='{cfg.ee or 'none'}' "
 +                f"waist={has_waist} gives {base_dim + int(has_waist)}{hint}"
 +            )
-+        drive_waist = has_waist and (not cfg.motion or cfg.motion_waist)
++        drive_waist = has_waist  # debug mode: on rt/lowcmd; motion mode: on rt/arm_sdk, next to the arms
 +        if has_waist and cfg.motion:
-+            logger_mp.warning(
-+                "motion mode: the policy's waist action is sent through rt/arm_sdk" if drive_waist else
-+                "motion mode: the waist is left alone, the policy's waist action is ignored (--motion_waist=true drives it)"
-+            )
++            logger_mp.info("motion mode: the waist is driven through rt/arm_sdk while Unitree's controller balances the legs")
 +        logger_mp.info(
 +            f"State/action layout: {arm_dof} arm + {base_dim - arm_dof} hand + {int(has_waist)} waist yaw | "
 +            f"limits: max_vel {cfg.max_vel} rad/s, max_lead {cfg.max_lead} rad (0 = off)"
@@ -117,7 +114,7 @@ index 20588a2..b4f83fc 100644
  
          # Get initial pose from the first step of the dataset
          from_idx = dataset.meta.episodes["dataset_from_index"][0]
-@@ -99,47 +155,95 @@ def eval_policy(
+@@ -99,47 +152,95 @@ def eval_policy(
          idx = 0
          print(f"user_input: {user_input}")
          full_state = None
@@ -233,7 +230,7 @@ index 20588a2..b4f83fc 100644
  
                  if cfg.ee:
                      ee_action_start_idx = arm_dof
-@@ -160,10 +264,10 @@ def eval_policy(
+@@ -160,10 +261,10 @@ def eval_policy(
                  # Maintain frequency
                  time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - loop_start_time)))
      except Exception as e:
@@ -247,7 +244,7 @@ index 20588a2..b4f83fc 100644
  
  
  @parser.wrap()
-@@ -177,11 +281,16 @@ def eval_main(cfg: EvalRealConfig):
+@@ -177,11 +278,16 @@ def eval_main(cfg: EvalRealConfig):
      torch.backends.cuda.matmul.allow_tf32 = True
  
      logging.info("Making policy.")
@@ -301,7 +298,7 @@ index a776a18..5b79263 100644
          """Return current dds mode machine."""
          return self.lowstate_subscriber.Read().mode_machine
 diff --git a/unitree_lerobot/eval_robot/utils/utils.py b/unitree_lerobot/eval_robot/utils/utils.py
-index 23e208a..c9e6491 100644
+index 23e208a..dba7bd3 100644
 --- a/unitree_lerobot/eval_robot/utils/utils.py
 +++ b/unitree_lerobot/eval_robot/utils/utils.py
 @@ -1,3 +1,4 @@
@@ -416,7 +413,7 @@ index 23e208a..c9e6491 100644
  def reset_policy(policy: PreTrainedPolicy):
      policy.reset()
  
-@@ -132,6 +233,26 @@ class EvalRealConfig:
+@@ -132,6 +233,24 @@ class EvalRealConfig:
      send_real_robot: bool = False
      use_dataset: bool = False
  
@@ -429,11 +426,9 @@ index 23e208a..c9e6491 100644
 +    replan: str = "async"
 +    # PyTorch CPU threads (0 = leave as is)
 +    threads: int = 0
-+    # the policy also has the waist yaw joint, as the LAST value of its state and action (arms + hands + waist)
++    # the policy also has the waist yaw joint, as the LAST value of its state and action (arms + hands + waist).
++    # The waist is then driven in both modes: debug mode (rt/lowcmd) and --motion=true (rt/arm_sdk).
 +    waist: bool = False
-+    # with --motion=true (robot standing in Unitree's walking mode) and --waist=true: also drive the waist yaw,
-+    # through rt/arm_sdk. Default: the waist stays where it is in motion mode.
-+    motion_waist: bool = False
 +    # safety limits on the arm (and waist) commands, 0 = off:
 +    # max_vel  [rad/s] how fast a joint command may change
 +    # max_lead [rad]   how far a joint command may be ahead of the measured joint

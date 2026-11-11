@@ -181,7 +181,7 @@ Each episode starts with a sim reset (new random layout with `--randomize`) and 
 | `--threads N` | 4 | PyTorch CPU threads for inference |
 | `--n-action-steps K` | from the checkpoint | Only with `--replan chunk`: re-plan every K steps |
 | `--device` | `cpu` | `cuda` if this PC has one |
-| `--motion`, `--motion-waist` | off | Robot in Unitree's walking mode: arms through `rt/arm_sdk`; with `--motion-waist` the waist too (step 6) |
+| `--motion` | off | Robot in Unitree's walking mode: arms, and the waist of a 15-joint policy, through `rt/arm_sdk` (step 6) |
 | `--record DIR` | off | Save the rollouts as a LeRobot dataset (`--save-on success` keeps successes only) |
 | `--dry-run` | off | Compute actions from the live cameras and joints but **send nothing** |
 | `--max-vel`, `--max-lead` | 1.0 rad/s, 0.25 rad | Safety limits, see step 6. The scripted sim episodes move at up to 2.1 rad/s, so a policy trained on them runs slower than its plan with the defaults; in sim you can pass `--max-vel 2.5 --max-lead 0.9` |
@@ -245,9 +245,9 @@ Safety built into `run_act.py`, every control tick:
 | Mode | Flags | Legs | Waist |
 |---|---|---|---|
 | Debug mode (default) | none | Held stiff at their start angles by `run_act.py`. Nothing balances: the robot must hang on the gantry or stand. | Driven by a 15-joint policy |
-| Walking mode | `--motion` | Unitree's own controller balances them; the robot stands by itself (R1+X on the remote) | Left alone, unless you add `--motion-waist`: then the policy's waist command is sent on `rt/arm_sdk`, next to the arms |
+| Walking mode | `--motion` | Unitree's own controller balances them; the robot stands by itself (R1+X on the remote) | Driven by a 15-joint policy, on `rt/arm_sdk` next to the arms |
 
-`--motion --motion-waist` was checked in the simulator's emulation of walking mode (3 of 4 episodes successful with the sim-trained policy), not on the real robot. A turned torso shifts the robot's weight: try it with small motions first.
+`--motion` with a waist policy was checked in the simulator's emulation of walking mode (3 of 4 episodes successful with the sim-trained policy), not on the real robot. A turned torso shifts the robot's weight: try it with small motions first.
 
 ## 7. Why this repo has its own runner
 

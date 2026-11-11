@@ -64,8 +64,7 @@ REAL_CHECKLIST = """\
 REAL ROBOT checklist:
   [ ] G1 hanging on the gantry / stand, area around the arms clear, e-stop in reach of a second person
   [ ] robot in DEBUG mode (L2+R2 on the remote): run_act sends rt/lowcmd like xr_teleoperate without --motion
-      (with --motion: the robot stands in Unitree's walking mode and run_act sends rt/arm_sdk; the waist is
-      only driven with --motion-waist)
+      (with --motion: the robot stands in Unitree's walking mode and run_act sends arms and waist on rt/arm_sdk)
   [ ] nothing else is commanding the robot (xr_teleoperate, MCP, other run_act) - check with record_live
   [ ] image server running on PC2 (cam_head + both wrist cameras), lighting/scene like the training data
   [ ] checkpoint trained for THIS robot/camera setup; tried in sim and with --dry-run first
@@ -412,10 +411,8 @@ def parse_args(argv=None):
     p.add_argument("--image-host", default=None)
     p.add_argument("--iface", default=None)
     p.add_argument("--motion", action="store_true",
-                   help="robot in Unitree's walking mode (it balances the legs): drive the arms via rt/arm_sdk")
-    p.add_argument("--motion-waist", action="store_true",
-                   help="with --motion and a 15-joint policy: also drive the waist yaw via rt/arm_sdk "
-                        "(default: the waist stays where it is)")
+                   help="robot in Unitree's walking mode (it balances the legs): drive the arms, and the waist "
+                        "of a 15-joint policy, via rt/arm_sdk")
     p.add_argument("--device", default="cpu")
     p.add_argument("--n-action-steps", type=int, default=None, help="re-plan every K steps (default: checkpoint's)")
     p.add_argument("--episodes", type=int, default=1)
@@ -448,11 +445,10 @@ def main(argv=None):
           + f" | limits {a.max_vel} rad/s, {a.max_lead} rad", flush=True)
     if policy.stats_warning:
         print(policy.stats_warning, flush=True)
-    drive_waist = (not a.motion) or a.motion_waist
+    drive_waist = True  # debug mode: on rt/lowcmd; --motion: on rt/arm_sdk, next to the arms
     if a.motion and n == 15:
-        print("[act] --motion: " + ("the policy's waist action is sent through rt/arm_sdk" if drive_waist else
-                                    "the waist is left alone, the policy's waist action is ignored "
-                                    "(--motion-waist drives it)"), flush=True)
+        print("[act] --motion: the waist is driven through rt/arm_sdk while Unitree's controller balances the legs",
+              flush=True)
     if a.target == "real" and not a.dry_run:
         print(REAL_CHECKLIST.format(max_vel=a.max_vel, max_lead=a.max_lead, max_seconds=a.max_seconds))
         if input("Type 'yes' to run the policy on the REAL robot: ").strip().lower() != "yes":
