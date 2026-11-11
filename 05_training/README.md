@@ -168,11 +168,13 @@ Each episode starts with a sim reset (new random layout with `--randomize`) and 
 | `--policy-path DIR` | required | The `pretrained_model` folder |
 | `--episodes N` | 1 | Number of rollouts. Successes are counted in sim. |
 | `--max-seconds S` | 30 | Time limit per episode |
-| `--n-action-steps K` | from the checkpoint | Re-plan every K steps instead of playing the whole predicted chunk |
+| `--replan async\|chunk` | `async` | `async`: a new chunk is computed in the background as fast as the PC allows while the current one keeps playing, so the 30 Hz loop never stops. `chunk`: plain LeRobot, play the chunk, then stop and infer |
+| `--threads N` | 4 | PyTorch CPU threads for inference |
+| `--n-action-steps K` | from the checkpoint | Only with `--replan chunk`: re-plan every K steps |
 | `--device` | `cpu` | `cuda` if this PC has one |
 | `--record DIR` | off | Save the rollouts as a LeRobot dataset (`--save-on success` keeps successes only) |
 | `--dry-run` | off | Compute actions from the live cameras and joints but **send nothing** |
-| `--max-vel`, `--max-lead` | 1.0 rad/s, 0.25 rad | Safety limits, see step 6 |
+| `--max-vel`, `--max-lead` | real: 1.0 rad/s, 0.25 rad; sim: 2.5 rad/s, 0.9 rad | Safety limits, see step 6. The scripted sim episodes move at up to 2.1 rad/s, so a policy trained on them lags and fails with the real-robot limits |
 | `--ramp-time`, `--ramp-vel` | 2 s, 0.4 rad/s | Slow move from the current pose to the first action |
 | `--end start\|hold` | `start` | After the episodes: go slowly back to the start pose, or hold |
 | `--domain`, `--image-port` | 1, 60000 | For a second sim |
