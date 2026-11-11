@@ -16,8 +16,11 @@ dataset is needed at deploy time. The observation is built exactly like lerobot-
 observation.images.<cam> RGB uint8 HWC -> float CHW in [0, 1]. A 15-dim action drives the waist too
 (G1Arms(waist=True).command -> command_waist); 14 drives the arms only.
 
-ACT predicts a chunk and plays n_action_steps of it (100 by default = 3.3 s open loop); --n-action-steps
-re-plans more often. On this CPU a chunk costs ~0.2-0.5 s, so the loop stalls briefly at each re-plan.
+ACT predicts a chunk of actions (100 = 3.3 s). The 30 Hz loop never waits for the network: with --replan async
+(default) a worker thread computes a new chunk from the newest observation as fast as the PC allows, while the
+current chunk keeps playing; the new chunk is entered at the step that passed since its observation. So the
+policy re-plans every 0.5-1 s on a laptop CPU and every tick on a GPU. --replan chunk is LeRobot's plain
+behaviour (play n_action_steps, then stop and infer). --threads sets the PyTorch CPU threads.
 
 Safety (every tick, in this order; counters are printed per episode):
   * start: the first action is computed, then the robot ramps there from its measured pose (cosine, at most
@@ -25,6 +28,8 @@ Safety (every tick, in this order; counters are printed per episode):
   * joint limits (URDF arm limits, waist +-1.0 rad), non-finite actions -> hold;
   * lead clamp: |command - measured| <= --max-lead rad (no large tracking errors -> no torque spikes);
   * velocity limit: |command change| <= --max-vel rad/s (per 1/30 s tick);
+    defaults: 1.0 rad/s and 0.25 rad on the real robot, 2.5 rad/s and 0.9 rad in sim (the scripted sim
+    demonstrations reach 2.1 rad/s; tighter limits make the robot lag behind the policy's plan);
   * --max-seconds per episode; Ctrl-C stops the policy and HOLDS the current measured pose until a second
     Ctrl-C (then exit). After a normal end, --end start moves slowly back to the start pose, --end hold holds.
 In sim each episode starts with a sim reset (objects re-randomised with --randomize) and counts successes
@@ -37,6 +42,7 @@ import argparse
 import os
 import signal
 import sys
+import threading
 import time
 
 import numpy as np
@@ -149,8 +155,10 @@ def constant_state_joints(preprocessor, tol=1e-6):
 class LeRobotPolicy:
     """policy(state, images) -> action (np), using the checkpoint's own processors (normalization stats)."""
 
-    def __init__(self, path, device="cpu", n_action_steps=None, task=DEFAULT_TASK):
+    def __init__(self, path, device="cpu", n_action_steps=None, task=DEFAULT_TASK, threads=None):
         import torch
+        if threads:  # scripts/env.sh sets OMP_NUM_THREADS=1 for the sim; inference wants more
+            torch.set_num_threads(int(threads))
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 
@@ -184,8 +192,7 @@ class LeRobotPolicy:
         self.pre.reset()
         self.post.reset()
 
-    def __call__(self, state, images):
-        from lerobot.utils.control_utils import predict_action
+    def _obs(self, state, images):
         obs = {STATE_KEY: np.asarray(state, np.float32).reshape(self.state_dim)}
         for c in self.cams:
             img = images[c]
@@ -194,9 +201,71 @@ class LeRobotPolicy:
                 import cv2
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
             obs[IMAGE_PREFIX + c] = np.ascontiguousarray(img)
+        return obs
+
+    def chunk(self, state, images):
+        """The whole predicted chunk (chunk_size, action_dim), un-normalised; no action queue involved."""
+        from lerobot.utils.control_utils import prepare_observation_for_inference
+        torch = self.torch
+        with torch.inference_mode():
+            obs = prepare_observation_for_inference(self._obs(state, images), self.device, self.task, "")
+            actions = self.policy.predict_action_chunk(self.pre(obs))  # (1, chunk, dim), normalised
+            return np.stack([self.post(actions[:, i]).squeeze(0).float().cpu().numpy()
+                             for i in range(actions.shape[1])])
+
+    def __call__(self, state, images):
+        from lerobot.utils.control_utils import predict_action
+        obs = self._obs(state, images)
         act = predict_action(obs, self.policy, self.device, self.pre, self.post, use_amp=False, task=self.task,
                              robot_type="")
         return act.squeeze(0).float().cpu().numpy()
+
+
+class AsyncChunks:
+    """policy(state, images) -> action without ever blocking the control loop (after the first call).
+
+    A worker thread computes the next chunk from the newest observation while the current chunk keeps playing.
+    A finished chunk replaces the current one and is entered at the tick that has passed since its observation,
+    so the actions stay aligned in time. `plan(state, images)` returns a (chunk, dim) array.
+    """
+
+    def __init__(self, plan):
+        self.plan = plan
+        self.lock = threading.Lock()
+        self.generation = 0
+        self.reset()
+
+    def reset(self):
+        with self.lock:
+            self.generation += 1  # a plan still being computed belongs to the old episode: drop it
+            self.plans = 0
+            self.current, self.i, self.tick, self.ready, self.busy = None, 0, 0, None, False
+
+    def _work(self, state, images, tick, generation):
+        chunk = self.plan(state, images)
+        with self.lock:
+            if generation == self.generation:
+                self.ready, self.busy = (chunk, tick), False
+                self.plans += 1
+
+    def __call__(self, state, images):
+        if self.current is None:  # first action of an episode: nothing to play meanwhile
+            self.current, self.i = self.plan(state, images), 0
+        with self.lock:
+            if self.ready is not None:
+                (chunk, tick), self.ready = self.ready, None
+                if self.tick - tick < len(chunk):
+                    self.current, self.i = chunk, self.tick - tick
+            start = not self.busy
+            if start:
+                self.busy = True
+                args = (np.array(state), {k: v.copy() for k, v in images.items()}, self.tick, self.generation)
+        if start:
+            threading.Thread(target=self._work, args=args, daemon=True).start()
+        action = self.current[min(self.i, len(self.current) - 1)]
+        self.i += 1
+        self.tick += 1
+        return action
 
 
 # ---------------------------------------------------------------------------------------- the loop
@@ -316,7 +385,8 @@ class Runner:
         del st["infer_ms"]
         self.log(f"[act] ep {st['episode']}: {st['reason']} after {st['steps']} steps | inference mean "
                  f"{st['infer_ms_mean']:.0f} / max {st['infer_ms_max']:.0f} ms | overruns {st['overruns']} | gate "
-                 f"limit {st['gate_limit']} lead {st['gate_lead']} vel {st['gate_vel']} rejected {st['gate_rejected']}")
+                 f"limit {st['gate_limit']} lead {st['gate_lead']} vel {st['gate_vel']} rejected {st['gate_rejected']}"
+                 + (f" | re-plans {self.policy.plans}" if hasattr(self.policy, "plans") else ""))
         return st
 
 
@@ -345,8 +415,14 @@ def parse_args(argv=None):
     p.add_argument("--n-action-steps", type=int, default=None, help="re-plan every K steps (default: checkpoint's)")
     p.add_argument("--episodes", type=int, default=1)
     p.add_argument("--max-seconds", type=float, default=30.0, help="per episode")
-    p.add_argument("--max-vel", type=float, default=1.0, help="rad/s per joint (command change limit)")
-    p.add_argument("--max-lead", type=float, default=0.25, help="rad, max |command - measured| per joint")
+    p.add_argument("--replan", choices=["async", "chunk"], default="async",
+                   help="async: re-plan in the background as fast as the PC allows; chunk: play n_action_steps, "
+                        "then stop and infer (plain LeRobot)")
+    p.add_argument("--threads", type=int, default=4, help="PyTorch CPU threads for inference")
+    p.add_argument("--max-vel", type=float, default=None,
+                   help="rad/s per joint, command change limit (default: 1.0 real, 2.5 sim)")
+    p.add_argument("--max-lead", type=float, default=None,
+                   help="rad, max |command - measured| per joint (default: 0.25 real, 0.9 sim)")
     p.add_argument("--ramp-time", type=float, default=2.0, help="min s for the start ramp / --end start move")
     p.add_argument("--ramp-vel", type=float, default=0.4, help="peak rad/s of the start ramp")
     p.add_argument("--end", choices=["start", "hold"], default="start",
@@ -361,10 +437,16 @@ def parse_args(argv=None):
 
 def main(argv=None):
     a = parse_args(argv)
-    policy = LeRobotPolicy(a.policy_path, a.device, a.n_action_steps, a.task)
+    if a.max_vel is None:
+        a.max_vel = 1.0 if a.target == "real" else 2.5
+    if a.max_lead is None:
+        a.max_lead = 0.25 if a.target == "real" else 0.9
+    policy = LeRobotPolicy(a.policy_path, a.device, a.n_action_steps, a.task, a.threads)
     n = policy.state_dim
     print(f"[act] {policy.config.type} from {a.policy_path}: state/action {n}, cameras {policy.cams}, "
-          f"chunk {policy.config.chunk_size} / plays {policy.config.n_action_steps}", flush=True)
+          f"chunk {policy.config.chunk_size}, "
+          + ("re-plans in the background" if a.replan == "async" else f"plays {policy.config.n_action_steps}")
+          + f" | limits {a.max_vel} rad/s, {a.max_lead} rad", flush=True)
     if policy.stats_warning:
         print(policy.stats_warning, flush=True)
     if a.motion and n == 15:
@@ -389,7 +471,8 @@ def main(argv=None):
         writer = LeRobotWriter(a.record, a.repo_id or f"local/{os.path.basename(os.path.normpath(a.record))}",
                                a.task, waist=(n == 15))
     gate = SafetyGate(*joint_limits(n), max_vel=a.max_vel, max_lead=a.max_lead)
-    runner = Runner(robot, policy, n, gate, policy.cams, send=not a.dry_run, writer=writer,
+    actor = AsyncChunks(policy.chunk) if a.replan == "async" else policy
+    runner = Runner(robot, actor, n, gate, policy.cams, send=not a.dry_run, writer=writer,
                     drive_waist=not a.motion, ramp_time=a.ramp_time, ramp_vel=a.ramp_vel)
 
     def on_sigint(sig, frame):

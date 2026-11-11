@@ -199,3 +199,28 @@ def test_constant_state_joints():
     pre = types.SimpleNamespace(steps=[types.SimpleNamespace(), step])
     assert ra.constant_state_joints(pre) == [1]
     assert ra.constant_state_joints(types.SimpleNamespace(steps=[])) == []
+
+
+def test_async_chunks_never_block_and_stay_aligned_in_time():
+    import threading
+    release, calls = threading.Event(), []
+
+    def plan(state, images):          # chunk k holds the values 100 * k + step
+        k = len(calls)
+        calls.append(k)
+        if k:                         # every plan after the first one waits until the test lets it finish
+            release.wait(5)
+        return 100.0 * k + np.arange(10.0)[:, None] * np.ones((1, 2))
+
+    actor = ra.AsyncChunks(plan)
+    s, im = np.zeros(2), {"cam": np.zeros((2, 2, 3), np.uint8)}
+    assert [actor(s, im)[0] for _ in range(4)] == [0, 1, 2, 3]   # plays chunk 0 while plan 1 is being computed
+    release.set()
+    for _ in range(100):
+        if actor.ready is not None:
+            break
+        import time
+        time.sleep(0.01)
+    assert actor(s, im)[0] == 104     # plan 1 saw tick 0, four ticks passed: enter it at its step 4
+    actor.reset()
+    assert actor(s, im)[0] % 100 == 0  # a new episode starts at step 0 of a fresh plan
