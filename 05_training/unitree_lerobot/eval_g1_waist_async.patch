@@ -1,0 +1,363 @@
+From 1c24e5961a9ac169eba35ccc3dda5799901c9bad Mon Sep 17 00:00:00 2001
+From: girardijp3 <joao.girardi@fablabjoinville.com.br>
+Date: Wed, 11 Nov 2026 13:25:52 -0300
+Subject: [PATCH] eval_g1: waist yaw joint, background re-planning, current
+ image client
+
+- a policy with one more state/action value than arms + hands drives the waist yaw (last value)
+- --replan=async (default): the next action chunk is computed in a worker thread while the current
+  one plays, so the 30 Hz loop does not stop for inference; --replan=chunk is the old behaviour
+- use the image client API that make_robot.py already has (image_host, camera config)
+- --ee=none for arms only, --sim, --root, --threads; one-lens head camera; cam_head rename
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+---
+ unitree_lerobot/eval_robot/eval_g1.py         | 101 ++++++++++++------
+ unitree_lerobot/eval_robot/make_robot.py      |   5 +-
+ .../eval_robot/robot_control/robot_arm.py     |   8 ++
+ unitree_lerobot/eval_robot/utils/utils.py     | 101 ++++++++++++++++++
+ 4 files changed, 180 insertions(+), 35 deletions(-)
+
+diff --git a/unitree_lerobot/eval_robot/eval_g1.py b/unitree_lerobot/eval_robot/eval_g1.py
+index 20588a2..838dfae 100644
+--- a/unitree_lerobot/eval_robot/eval_g1.py
++++ b/unitree_lerobot/eval_robot/eval_g1.py
+@@ -7,6 +7,8 @@ Refer to:   lerobot/lerobot/scripts/eval.py
+ import time
+ import torch
+ import logging
++import traceback
++from functools import partial
+ 
+ import numpy as np
+ from pprint import pformat
+@@ -34,8 +36,9 @@ from unitree_lerobot.eval_robot.make_robot import (
+     process_images_and_observations,
+ )
+ from unitree_lerobot.eval_robot.utils.utils import (
+-    cleanup_resources,
++    AsyncChunks,
+     predict_action,
++    predict_chunk,
+     to_list,
+     to_scalar,
+     EvalRealConfig,
+@@ -68,27 +71,38 @@ def eval_policy(
+         preprocessor.reset()
+         postprocessor.reset()
+ 
+-    image_info = None
++    image_client = None
+     try:
+         # --- Setup Phase ---
+-        image_info = setup_image_client(cfg)
++        if cfg.ee.lower() in ("", "none"):  # arms only (e.g. the G1 with rubber hands)
++            cfg.ee = ""
++        image_client, camera_config = setup_image_client(cfg)
+         robot_interface = setup_robot_interface(cfg)
+ 
+         # Unpack interfaces for convenience
+         arm_ctrl, arm_ik, ee_shared_mem, arm_dof, ee_dof = (
+             robot_interface[key] for key in ["arm_ctrl", "arm_ik", "ee_shared_mem", "arm_dof", "ee_dof"]
+         )
+-        tv_img_array, wrist_img_array, tv_img_shape, wrist_img_shape, is_binocular, has_wrist_cam = (
+-            image_info[key]
+-            for key in [
+-                "tv_img_array",
+-                "wrist_img_array",
+-                "tv_img_shape",
+-                "wrist_img_shape",
+-                "is_binocular",
+-                "has_wrist_cam",
+-            ]
+-        )
++
++        # A policy with one more joint than arms + hands has the waist yaw as its LAST state/action value.
++        state_dim = int(policy.config.input_features["observation.state"].shape[0])
++        base_dim = arm_dof + (2 * ee_dof if cfg.ee else 0)
++        has_waist = state_dim == base_dim + 1
++        if state_dim not in (base_dim, base_dim + 1):
++            raise ValueError(f"policy state has {state_dim} values, but arm={cfg.arm} ee='{cfg.ee}' gives {base_dim}")
++        if has_waist and cfg.motion:
++            logger_mp.warning("motion mode: the motion controller owns the waist, the policy's waist action is ignored")
++        logger_mp.info(f"State/action layout: {arm_dof} arm + {base_dim - arm_dof} hand + {int(has_waist)} waist yaw")
++        image_keys = list(policy.config.image_features)
++        device = get_safe_torch_device(policy.config.device)
++        actor = None
++        if cfg.replan == "async":
++            actor = AsyncChunks(
++                lambda obs: predict_chunk(
++                    obs, policy, device, preprocessor, postprocessor, policy.config.use_amp, step["task"],
++                    use_dataset=cfg.use_dataset, robot_type=None,
++                )
++            )
+ 
+         # Get initial pose from the first step of the dataset
+         from_idx = dataset.meta.episodes["dataset_from_index"][0]
+@@ -99,6 +113,7 @@ def eval_policy(
+         idx = 0
+         print(f"user_input: {user_input}")
+         full_state = None
++        waist_cmd = None
+         if user_input.lower() == "s":
+             # "The initial positions of the robot's arm and fingers take the initial positions during data recording."
+             logger_mp.info("Initializing robot to starting pose...")
+@@ -110,36 +125,49 @@ def eval_policy(
+             while True:
+                 loop_start_time = time.perf_counter()
+                 # 1. Get Observations
+-                observation, current_arm_q = process_images_and_observations(
+-                    tv_img_array, wrist_img_array, tv_img_shape, wrist_img_shape, is_binocular, has_wrist_cam, arm_ctrl
+-                )
++                observation, current_arm_q = process_images_and_observations(image_client, camera_config, arm_ctrl)
++                missing = [k for k in image_keys if k not in {cfg.rename_map.get(o, o) for o in observation}]
++                if missing or current_arm_q is None:
++                    logger_mp.warning(f"Waiting for {missing or 'the arm state'}")
++                    time.sleep(0.1)
++                    continue
+                 left_ee_state = right_ee_state = np.array([])
+                 if cfg.ee:
+                     with ee_shared_mem["lock"]:
+                         full_state = np.array(ee_shared_mem["state"][:])
+                         left_ee_state = full_state[:ee_dof]
+                         right_ee_state = full_state[ee_dof:]
++                waist_state = np.array([arm_ctrl.get_current_waist_yaw_q()]) if has_waist else np.array([])
+                 state_tensor = torch.from_numpy(
+-                    np.concatenate((current_arm_q, left_ee_state, right_ee_state), axis=0)
++                    np.concatenate((current_arm_q, left_ee_state, right_ee_state, waist_state), axis=0)
+                 ).float()
+                 observation["observation.state"] = state_tensor
+                 # 2. Get Action from Policy
+-                action = predict_action(
+-                    observation,
+-                    policy,
+-                    get_safe_torch_device(policy.config.device),
+-                    preprocessor,
+-                    postprocessor,
+-                    policy.config.use_amp,
+-                    step["task"],
+-                    use_dataset=cfg.use_dataset,
+-                    robot_type=None,
+-                )
+-                action_np = action.cpu().numpy()
++                if actor is not None:  # never waits for the network (except for the very first action)
++                    action_np = np.asarray(actor(observation))
++                else:
++                    action = predict_action(
++                        observation,
++                        policy,
++                        device,
++                        preprocessor,
++                        postprocessor,
++                        policy.config.use_amp,
++                        step["task"],
++                        use_dataset=cfg.use_dataset,
++                        robot_type=None,
++                    )
++                    action_np = action.cpu().numpy()
+                 # 3. Execute Action
+                 arm_action = action_np[:arm_dof]
+                 tau = arm_ik.solve_tau(arm_action)
+                 arm_ctrl.ctrl_dual_arm(arm_action, tau)
++                if has_waist and not cfg.motion:
++                    if waist_cmd is None:
++                        waist_cmd = float(waist_state[0])
++                    max_step = cfg.waist_max_vel / cfg.frequency
++                    waist_cmd += float(np.clip(action_np[-1] - waist_cmd, -max_step, max_step))
++                    arm_ctrl.ctrl_waist_yaw(waist_cmd)
+ 
+                 if cfg.ee:
+                     ee_action_start_idx = arm_dof
+@@ -160,10 +188,10 @@ def eval_policy(
+                 # Maintain frequency
+                 time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - loop_start_time)))
+     except Exception as e:
+-        logger_mp.info(f"An error occurred: {e}")
++        logger_mp.error(f"An error occurred: {e}\n{traceback.format_exc()}")
+     finally:
+-        if image_info:
+-            cleanup_resources(image_info)
++        if image_client is not None:
++            image_client.close()
+ 
+ 
+ @parser.wrap()
+@@ -177,11 +205,16 @@ def eval_main(cfg: EvalRealConfig):
+     torch.backends.cuda.matmul.allow_tf32 = True
+ 
+     logging.info("Making policy.")
++    if cfg.threads:
++        torch.set_num_threads(cfg.threads)
+ 
+-    dataset = LeRobotDataset(repo_id=cfg.repo_id)
++    dataset = LeRobotDataset(repo_id=cfg.repo_id, root=cfg.root or None)
+ 
+     policy = make_policy(cfg=cfg.policy, ds_meta=dataset.meta)
+     policy.eval()
++    # A dataset recorded with one head view called cam_head: feed it the (left) head image.
++    if "observation.images.cam_head" in policy.config.image_features and not cfg.rename_map:
++        cfg.rename_map = {"observation.images.cam_left_high": "observation.images.cam_head"}
+ 
+     preprocessor, postprocessor = make_pre_post_processors(
+         policy_cfg=cfg.policy,
+diff --git a/unitree_lerobot/eval_robot/make_robot.py b/unitree_lerobot/eval_robot/make_robot.py
+index c1dea46..7b34054 100644
+--- a/unitree_lerobot/eval_robot/make_robot.py
++++ b/unitree_lerobot/eval_robot/make_robot.py
+@@ -185,7 +185,10 @@ def process_images_and_observations(img_client, camera_config, arm_ctrl):
+ 
+         if camera_config['head_camera']['enable_zmq']:
+             head_img = img_client.get_head_frame()
+-            if head_img is not None:
++            if head_img is not None and not camera_config['head_camera'].get('binocular', True):
++                # one-lens head camera: the whole frame is the (left) head view
++                observation["observation.images.cam_left_high"] = to_tensor_rgb(head_img.bgr)
++            elif head_img is not None:
+                 observation["observation.images.cam_left_high"] = to_tensor_rgb(head_img.bgr[:, :camera_config['head_camera']['image_shape'][1]//2])
+                 observation["observation.images.cam_right_high"] = to_tensor_rgb(head_img.bgr[:, camera_config['head_camera']['image_shape'][1]//2:])
+             else:
+diff --git a/unitree_lerobot/eval_robot/robot_control/robot_arm.py b/unitree_lerobot/eval_robot/robot_control/robot_arm.py
+index a776a18..5b79263 100644
+--- a/unitree_lerobot/eval_robot/robot_control/robot_arm.py
++++ b/unitree_lerobot/eval_robot/robot_control/robot_arm.py
+@@ -211,6 +211,14 @@ class G1_29_ArmController:
+             self.q_target = q_target
+             self.tauff_target = tauff_target
+ 
++    def ctrl_waist_yaw(self, q_target):
++        """Set the waist yaw target (rad). Until this is called the waist stays locked at its start pose."""
++        self.msg.motor_cmd[G1_29_JointIndex.kWaistYaw].q = float(np.clip(q_target, -1.0, 1.0))
++
++    def get_current_waist_yaw_q(self):
++        """Return current state q of the waist yaw motor."""
++        return float(self.lowstate_buffer.GetData().motor_state[G1_29_JointIndex.kWaistYaw].q)
++
+     def get_mode_machine(self):
+         """Return current dds mode machine."""
+         return self.lowstate_subscriber.Read().mode_machine
+diff --git a/unitree_lerobot/eval_robot/utils/utils.py b/unitree_lerobot/eval_robot/utils/utils.py
+index 23e208a..4823132 100644
+--- a/unitree_lerobot/eval_robot/utils/utils.py
++++ b/unitree_lerobot/eval_robot/utils/utils.py
+@@ -1,3 +1,4 @@
++import threading
+ import numpy as np
+ import torch
+ from typing import Any
+@@ -79,6 +80,94 @@ def predict_action(
+     return action
+ 
+ 
++def predict_chunk(
++    observation: dict[str, np.ndarray],
++    policy: PreTrainedPolicy,
++    device: torch.device,
++    preprocessor: PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],
++    postprocessor: PolicyProcessorPipeline[PolicyAction, PolicyAction],
++    use_amp: bool,
++    task: str | None = None,
++    use_dataset: bool | None = False,
++    robot_type: str | None = None,
++):
++    """Like predict_action, but returns the whole predicted chunk (chunk_size, action_dim) as numpy and does
++    not touch the policy's action queue. Same numbers as calling predict_action chunk_size times."""
++    observation = copy(observation)
++    with (
++        torch.inference_mode(),
++        torch.autocast(device_type=device.type) if device.type == "cuda" and use_amp else nullcontext(),
++    ):
++        for name in observation:
++            if not use_dataset:
++                if not hasattr(observation[name], "unsqueeze"):
++                    continue
++                if "images" in name:
++                    observation[name] = observation[name].type(torch.float32) / 255
++                    observation[name] = observation[name].permute(2, 0, 1).contiguous()
++            observation[name] = observation[name].unsqueeze(0).to(device)
++        observation["task"] = task if task else ""
++        observation["robot_type"] = robot_type if robot_type else ""
++        actions = policy.predict_action_chunk(preprocessor(observation))  # (1, chunk, dim), normalised
++        return np.stack(
++            [postprocessor(actions[:, i]).squeeze(0).float().cpu().numpy() for i in range(actions.shape[1])]
++        )
++
++
++class AsyncChunks:
++    """actor(observation) -> action, without stopping the control loop for inference.
++
++    A worker thread computes the next chunk from the newest observation while the current chunk keeps
++    playing. A finished chunk replaces the current one and is entered at the tick that has passed since its
++    observation, so the actions stay aligned in time. Only the first action of a run waits for the network.
++    `plan(observation)` returns a (chunk, dim) array, e.g. a partial of predict_chunk.
++    """
++
++    def __init__(self, plan):
++        self.plan = plan
++        self.lock = threading.Lock()
++        self.generation = 0
++        self.reset()
++
++    def reset(self):
++        with self.lock:
++            self.generation += 1  # a plan still being computed belongs to the old run: drop it
++            self.plans = 0
++            self.current, self.i, self.tick, self.ready, self.busy = None, 0, 0, None, False
++
++    def _work(self, observation, tick, generation):
++        try:
++            chunk = self.plan(observation)
++        except Exception as e:  # keep playing the current chunk; the next tick starts a new plan
++            logger_mp.error(f"[AsyncChunks] planning failed: {e}")
++            chunk = None
++        with self.lock:
++            if generation == self.generation:
++                self.busy = False
++                if chunk is not None:
++                    self.ready = (chunk, tick)
++                    self.plans += 1
++
++    def __call__(self, observation):
++        if self.current is None:
++            self.current, self.i = self.plan(observation), 0
++        with self.lock:
++            if self.ready is not None:
++                (chunk, tick), self.ready = self.ready, None
++                if self.tick - tick < len(chunk):
++                    self.current, self.i = chunk, self.tick - tick
++            start = not self.busy
++            if start:
++                self.busy = True
++                args = (dict(observation), self.tick, self.generation)
++        if start:
++            threading.Thread(target=self._work, args=args, daemon=True).start()
++        action = self.current[min(self.i, len(self.current) - 1)]
++        self.i += 1
++        self.tick += 1
++        return action
++
++
+ def reset_policy(policy: PreTrainedPolicy):
+     policy.reset()
+ 
+@@ -132,6 +221,18 @@ class EvalRealConfig:
+     send_real_robot: bool = False
+     use_dataset: bool = False
+ 
++    # image server address (the robot's PC2); 127.0.0.1 for a simulator on this PC
++    image_host: str = "192.168.123.164"
++    # talk to a simulator (DDS domain 1) instead of the real robot
++    sim: bool = False
++    # "async": compute the next action chunk in the background while the current one plays (the control loop
++    # never stops for inference); "chunk": stock behaviour, play n_action_steps and then wait for the network
++    replan: str = "async"
++    # PyTorch CPU threads (0 = leave as is)
++    threads: int = 0
++    # waist yaw speed limit [rad/s], only used by policies that have the waist joint
++    waist_max_vel: float = 2.0
++
+     rename_map: dict[str, str] = field(default_factory=dict)
+ 
+     def __post_init__(self):
+-- 
+2.43.0
+

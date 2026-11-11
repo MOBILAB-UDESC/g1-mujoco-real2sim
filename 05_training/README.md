@@ -232,6 +232,28 @@ Unitree's `unitree_lerobot` ships `eval_g1.py` for this job. We do not use it be
 
 `run_act.py` loads the same LeRobot checkpoint format, so a policy trained with `unitree_lerobot` or plain `lerobot-train` runs with it.
 
+### Using Unitree's `eval_g1.py` anyway (patch)
+
+If a PC only has Unitree's repo, `05_training/unitree_lerobot/eval_g1_waist_async.patch` makes its `eval_g1.py` run our 15-joint policies. It was made against `unitree_IL_lerobot` commit `41c2805` and changes four files in `unitree_lerobot/eval_robot/`.
+
+```bash
+cd unitree_IL_lerobot
+git apply /path/to/g1-mujoco-real2sim/05_training/unitree_lerobot/eval_g1_waist_async.patch
+python unitree_lerobot/eval_robot/eval_g1.py \
+    --policy.path=/path/to/pretrained_model \
+    --repo_id=mobilab-udesc/g1_box_into_box_sim_scripted \
+    --arm=G1_29 --ee=none --frequency=30
+```
+
+| Change | What it does |
+|---|---|
+| Waist | A policy with one more value than arms + hands drives the waist yaw with its last value (limited to `--waist_max_vel`, 2 rad/s) |
+| `--replan=async` (default) | The next chunk is computed in a background thread while the current one plays, so the 30 Hz loop does not stop for inference. `--replan=chunk` is Unitree's original behaviour |
+| Image client | Uses the current image client (`--image_host`, default `192.168.123.164`); mono head camera; `cam_head` is fed from the head image |
+| `--ee=none`, `--sim=true`, `--root`, `--threads` | Arms only; talk to a simulator; local dataset folder; PyTorch CPU threads |
+
+Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. Unlike `run_act.py` it has no start ramp and no velocity or lead limits for the arms: it is Unitree's loop.
+
 ## 8. Run the tests (optional)
 
 ```bash
