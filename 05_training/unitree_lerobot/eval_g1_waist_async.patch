@@ -1,5 +1,5 @@
 diff --git a/unitree_lerobot/eval_robot/eval_g1.py b/unitree_lerobot/eval_robot/eval_g1.py
-index 20588a2..2dbdd93 100644
+index 20588a2..9a9ef3d 100644
 --- a/unitree_lerobot/eval_robot/eval_g1.py
 +++ b/unitree_lerobot/eval_robot/eval_g1.py
 @@ -5,8 +5,11 @@ Refer to:   lerobot/lerobot/scripts/eval.py
@@ -113,7 +113,7 @@ index 20588a2..2dbdd93 100644
  
          # Get initial pose from the first step of the dataset
          from_idx = dataset.meta.episodes["dataset_from_index"][0]
-@@ -99,47 +151,93 @@ def eval_policy(
+@@ -99,47 +151,95 @@ def eval_policy(
          idx = 0
          print(f"user_input: {user_input}")
          full_state = None
@@ -158,7 +158,9 @@ index 20588a2..2dbdd93 100644
 -                    tv_img_array, wrist_img_array, tv_img_shape, wrist_img_shape, is_binocular, has_wrist_cam, arm_ctrl
 -                )
 +                observation, current_arm_q = process_images_and_observations(image_client, camera_config, arm_ctrl)
-+                missing = [k for k in image_keys if k not in {cfg.rename_map.get(o, o) for o in observation}]
++                # a camera whose first frame has not arrived yet comes back as None (or not at all)
++                have = {cfg.rename_map.get(o, o) for o, v in observation.items() if v is not None}
++                missing = [k for k in image_keys if k not in have]
 +                if missing or current_arm_q is None:
 +                    logger_mp.warning(f"Waiting for {missing or 'the arm state'}")
 +                    time.sleep(0.1)
@@ -227,7 +229,7 @@ index 20588a2..2dbdd93 100644
  
                  if cfg.ee:
                      ee_action_start_idx = arm_dof
-@@ -160,10 +258,10 @@ def eval_policy(
+@@ -160,10 +260,10 @@ def eval_policy(
                  # Maintain frequency
                  time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - loop_start_time)))
      except Exception as e:
@@ -241,7 +243,7 @@ index 20588a2..2dbdd93 100644
  
  
  @parser.wrap()
-@@ -177,11 +275,16 @@ def eval_main(cfg: EvalRealConfig):
+@@ -177,11 +277,16 @@ def eval_main(cfg: EvalRealConfig):
      torch.backends.cuda.matmul.allow_tf32 = True
  
      logging.info("Making policy.")
