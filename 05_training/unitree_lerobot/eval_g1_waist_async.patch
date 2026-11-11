@@ -1,27 +1,5 @@
-From 7f02e09998de404950bbbcd67cb3d5f94b27c0a0 Mon Sep 17 00:00:00 2001
-From: girardijp3 <joao.girardi@fablabjoinville.com.br>
-Date: Wed, 11 Nov 2026 13:25:52 -0300
-Subject: [PATCH] eval_g1: optional waist yaw joint, safety limits, background
- re-planning, current image client
-
-- --waist=true: the policy has the waist yaw as the last value of its state and action
-  (default false = arms + hands as before)
-- --max_vel (1.0 rad/s) and --max_lead (0.25 rad) limit the arm and waist commands; 0 = off
-- --replan=async (default): the next action chunk is computed in a worker thread while the current
-  one plays, so the 30 Hz loop does not stop for inference; --replan=chunk is the old behaviour
-- use the image client API that make_robot.py already has (image_host, camera config)
-- --ee=none for arms only, --sim, --root, --threads; one-lens head camera; cam_head rename
-
-Co-Authored-By: Claude <noreply@anthropic.com>
----
- unitree_lerobot/eval_robot/eval_g1.py         | 115 ++++++++++++-----
- unitree_lerobot/eval_robot/make_robot.py      |   5 +-
- .../eval_robot/robot_control/robot_arm.py     |   8 ++
- unitree_lerobot/eval_robot/utils/utils.py     | 118 ++++++++++++++++++
- 4 files changed, 211 insertions(+), 35 deletions(-)
-
 diff --git a/unitree_lerobot/eval_robot/eval_g1.py b/unitree_lerobot/eval_robot/eval_g1.py
-index 20588a2..f4982ef 100644
+index 20588a2..5502238 100644
 --- a/unitree_lerobot/eval_robot/eval_g1.py
 +++ b/unitree_lerobot/eval_robot/eval_g1.py
 @@ -7,6 +7,8 @@ Refer to:   lerobot/lerobot/scripts/eval.py
@@ -45,7 +23,7 @@ index 20588a2..f4982ef 100644
      to_list,
      to_scalar,
      EvalRealConfig,
-@@ -68,27 +72,49 @@ def eval_policy(
+@@ -68,27 +72,52 @@ def eval_policy(
          preprocessor.reset()
          postprocessor.reset()
  
@@ -73,6 +51,9 @@ index 20588a2..f4982ef 100644
 -                "is_binocular",
 -                "has_wrist_cam",
 -            ]
++        # The controller starts by streaming an all-zero arm target. Hold the measured pose instead, so the
++        # arms stay where they are until the start is confirmed below.
++        arm_ctrl.ctrl_dual_arm(arm_ctrl.get_current_dual_arm_q(), np.zeros(arm_dof))
 +
 +        # --waist=true: the policy has the waist yaw as the LAST value of its state and action.
 +        state_dim = int(policy.config.input_features["observation.state"].shape[0])
@@ -107,7 +88,7 @@ index 20588a2..f4982ef 100644
  
          # Get initial pose from the first step of the dataset
          from_idx = dataset.meta.episodes["dataset_from_index"][0]
-@@ -99,6 +125,7 @@ def eval_policy(
+@@ -99,47 +128,85 @@ def eval_policy(
          idx = 0
          print(f"user_input: {user_input}")
          full_state = None
@@ -115,7 +96,36 @@ index 20588a2..f4982ef 100644
          if user_input.lower() == "s":
              # "The initial positions of the robot's arm and fingers take the initial positions during data recording."
              logger_mp.info("Initializing robot to starting pose...")
-@@ -110,36 +137,51 @@ def eval_policy(
+-            tau = robot_interface["arm_ik"].solve_tau(init_arm_pose)
+-            robot_interface["arm_ctrl"].ctrl_dual_arm(init_arm_pose, tau)
+-            time.sleep(1.0)  # Give time for the robot to move
++            if cfg.max_vel > 0:
++                # Go to the start pose under the same limits as the policy: at most max_vel rad/s per joint,
++                # never more than max_lead rad ahead of the measured joints.
++                def measure():
++                    waist_q = [arm_ctrl.get_current_waist_yaw_q()] if has_waist else []
++                    return np.concatenate((arm_ctrl.get_current_dual_arm_q(), waist_q))
++
++                init_waist = [float(step["observation.state"][-1])] if has_waist else []
++                init_target = np.concatenate((init_arm_pose.astype(float), init_waist))
++                prev_cmd = measure()
++                distance = float(np.max(np.abs(init_target - prev_cmd)))
++                logger_mp.info(f"Start move: {distance:.2f} rad at up to {cfg.max_vel} rad/s")
++                deadline = time.perf_counter() + 3.0 * distance / cfg.max_vel + 3.0
++                while np.max(np.abs(init_target - prev_cmd)) > 1e-3 and time.perf_counter() < deadline:
++                    tick_start = time.perf_counter()
++                    prev_cmd = limit_command(init_target, prev_cmd, measure(), cfg.max_vel, cfg.max_lead, cfg.frequency)
++                    arm_ctrl.ctrl_dual_arm(prev_cmd[:arm_dof], arm_ik.solve_tau(prev_cmd[:arm_dof]))
++                    if has_waist and not cfg.motion:
++                        arm_ctrl.ctrl_waist_yaw(float(prev_cmd[arm_dof]))
++                    time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - tick_start)))
++                time.sleep(0.5)  # let the arms settle
++            else:  # limits off: Unitree's original jump to the start pose
++                tau = robot_interface["arm_ik"].solve_tau(init_arm_pose)
++                robot_interface["arm_ctrl"].ctrl_dual_arm(init_arm_pose, tau)
++                time.sleep(1.0)  # Give time for the robot to move
+             # --- Run Main Loop ---
+             logger_mp.info(f"Starting evaluation loop at {cfg.frequency} Hz.")
              while True:
                  loop_start_time = time.perf_counter()
                  # 1. Get Observations
@@ -184,7 +194,7 @@ index 20588a2..f4982ef 100644
  
                  if cfg.ee:
                      ee_action_start_idx = arm_dof
-@@ -160,10 +202,10 @@ def eval_policy(
+@@ -160,10 +227,10 @@ def eval_policy(
                  # Maintain frequency
                  time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - loop_start_time)))
      except Exception as e:
@@ -198,7 +208,7 @@ index 20588a2..f4982ef 100644
  
  
  @parser.wrap()
-@@ -177,11 +219,16 @@ def eval_main(cfg: EvalRealConfig):
+@@ -177,11 +244,16 @@ def eval_main(cfg: EvalRealConfig):
      torch.backends.cuda.matmul.allow_tf32 = True
  
      logging.info("Making policy.")
@@ -391,6 +401,3 @@ index 23e208a..8a2f03b 100644
      rename_map: dict[str, str] = field(default_factory=dict)
  
      def __post_init__(self):
--- 
-2.43.0
-

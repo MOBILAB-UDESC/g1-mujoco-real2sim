@@ -254,17 +254,17 @@ python unitree_lerobot/eval_robot/eval_g1.py \
     --arm=G1_29 --ee=none --waist=true --frequency=30
 ```
 
-Leave out `--waist=true` for a policy without the waist joint. On a PC without a GPU add `--policy.device=cpu --threads=4`. The same changes are in `05_training/unitree_lerobot/eval_g1_waist_async.patch` (made against Unitree's commit `41c2805`; apply with `git apply`).
+Use `--waist=true` only for a policy trained with the waist joint (like the ones from this repo); leave it out for Unitree's usual arms (+ hands) policies. On a PC without a GPU add `--policy.device=cpu --threads=4`. The same changes are in `05_training/unitree_lerobot/eval_g1_waist_async.patch` (made against Unitree's commit `41c2805`; apply with `git apply`).
 
 | Change | What it does |
 |---|---|
 | `--waist=true` | The policy has the waist yaw as the last value of its state and action. Without the flag the script handles arms (+ hands) only, as before; the wrong setting stops with a message that says which one the policy needs |
-| `--max_vel`, `--max_lead` | Safety limits on the arm and waist commands, default 1.0 rad/s and 0.25 rad, `0` = off |
+| `--max_vel`, `--max_lead` | Safety limits on the arm and waist commands and on the move to the start pose, default 1.0 rad/s and 0.25 rad, `0` = off |
 | `--replan=async` (default) | The next chunk is computed in a background thread while the current one plays, so the 30 Hz loop does not stop for inference. `--replan=chunk` is Unitree's original behaviour |
 | Image client | Uses the current image client (`--image_host`, default `192.168.123.164`); mono head camera; `cam_head` is fed from the head image |
 | `--ee=none`, `--sim=true`, `--root`, `--threads` | Arms only; talk to a simulator; local dataset folder; PyTorch CPU threads |
 
-Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. Unlike `run_act.py` it has no start ramp: like Unitree's original, it commands the dataset's first arm pose and waits one second before the limited loop starts.
+Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. The move to the dataset's first pose obeys the same `--max_vel` / `--max_lead` limits (`--max_vel=0` restores Unitree's unlimited jump), and the arms hold their current pose when the script connects.
 
 ## 8. Run the tests (optional)
 
