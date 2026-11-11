@@ -6,7 +6,7 @@ A Unitree G1 humanoid (29 DoF, fixed rubber hands with knit gloves, no grippers)
 
 Made at MOBILAB (UDESC, Brazil). New words are explained in the [glossary](docs/GLOSSARY.md).
 
-The same project is also kept as the folder `g1_mujoco_real2sim/` of the lab's fork of Unitree's LeRobot tools, [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot), next to a fixed `eval_g1.py` that runs the policies trained here.
+The lab's fork of Unitree's LeRobot tools, [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot), has a fixed `eval_g1.py` that runs the policies trained here.
 
 ## 1. What you get
 
