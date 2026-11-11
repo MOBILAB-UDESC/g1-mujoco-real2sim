@@ -261,7 +261,7 @@ Use `--waist=true` only for a policy trained with the waist joint (like the ones
 | `--waist=true` | The policy has the waist yaw as the last value of its state and action. Without the flag the script handles arms (+ hands) only, as before; the wrong setting stops with a message that says which one the policy needs |
 | `--max_vel`, `--max_lead` | Safety limits on the arm and waist commands and on the move to the start pose, default 1.0 rad/s and 0.25 rad, `0` = off |
 | `--replan=async` (default) | The next chunk is computed in a background thread while the current one plays, so the 30 Hz loop does not stop for inference. `--replan=chunk` is Unitree's original behaviour |
-| Image client | Uses the current image client (`--image_host`, default `192.168.123.164`); mono head camera; `cam_head` is fed from the head image |
+| Image client and cameras | Uses the current image client (`--image_host`, default `192.168.123.164`). Only the views the policy was trained with are fed to it: `cam_head` gets the head image (whole frame for a one-lens camera, left half for a stereo one), wrist views only if the policy has them. Images are resized to the training size. The script lists the cameras at start and stops if one the policy needs is not sent |
 | `--ee=none`, `--sim=true`, `--root`, `--threads` | Arms only; talk to a simulator; local dataset folder; PyTorch CPU threads |
 
 Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. The move to the dataset's first pose obeys the same `--max_vel` / `--max_lead` limits (`--max_vel=0` restores Unitree's unlimited jump), and the arms hold their current pose when the script connects.
