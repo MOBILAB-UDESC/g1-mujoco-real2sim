@@ -503,6 +503,11 @@ def install(layout="pip", side_span_deg=SIDE_SPAN_DEG):
     WristViewsTeleVuer.initial_layout = layout
     WristViewsTeleVuer.side_span_deg = side_span_deg
     image_client_mod.ImageClient = TrackedImageClient
+    try:  # camera configs of teleimager 2.x servers (01_teleop/g1sim/teleimager_compat.py)
+        import teleimager_compat
+        teleimager_compat.install()
+    except ImportError:
+        pass
     tv_wrapper_mod.TeleVuer = WristViewsTeleVuer
 
 

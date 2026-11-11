@@ -8,7 +8,8 @@ Changes to Unitree's script:
   * --waist-stick (controller input + --motion, G1_29): the right stick twists the waist; at the waist limit,
     and while walking, the whole body turns instead (WaistStick below). The waist target is sent on the same
     message as the arms (rt/arm_sdk), so Unitree's controller keeps balancing the legs;
-  * both thumbsticks pressed = damping mode now calls the method that exists (Enter_Damp_Mode).
+  * both thumbsticks pressed = damping mode now calls the method that exists (Enter_Damp_Mode);
+  * camera configs of teleimager 2.x image servers are understood (g1sim/teleimager_compat.py).
 Everything else, including the flags, is Unitree's.
 """
 import time
@@ -33,6 +34,11 @@ from televuer import TeleVuerWrapper
 from teleop.robot_control.robot_arm import G1_29_ArmController, G1_29_Arm_Internal_Dex1_Controller, G1_23_ArmController, H1_2_ArmController, H1_ArmController, H2_ArmController, R1_A5_ArmController, R1_A7_ArmController
 from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_ArmIK, H1_ArmIK, H2_ArmIK, R1_A5_ArmIK, R1_A7_ArmIK
 from teleimager.image_client import ImageClient
+try:  # camera configs of teleimager 2.x servers (g1sim/teleimager_compat.py, on PYTHONPATH from scripts/env.sh)
+    import teleimager_compat
+    teleimager_compat.install()
+except ImportError:
+    pass
 from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper

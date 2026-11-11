@@ -405,6 +405,8 @@ class LiveObserver:
         self.binocular = set()
         self._last_jpg = {}
         if cameras:
+            import teleimager_compat  # 01_teleop/g1sim: teleimager 2.x camera servers
+            teleimager_compat.install()
             from teleimager.image_client import ImageClient
             self.img = ImageClient(host=cfg["image_host"], request_port=image_port, request_bgr=False)
             self.cam_config = self.img.get_cam_config()

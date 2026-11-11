@@ -239,6 +239,8 @@ Safety built into `run_act.py`, every control tick:
 | Velocity limit | The command changes at most `--max-vel` rad/s |
 | Time limit | `--max-seconds` per episode |
 | **Ctrl+C** | Stops the policy and **holds the current pose**. A second Ctrl+C exits. |
+| Dropped connection (SIGTERM / SIGHUP) | Exits at once instead of waiting for a second Ctrl+C |
+| Exit in walking mode (`--motion`) | Arms and waist go back to the start pose, then the `rt/arm_sdk` weight is lowered to 0 over 2 s, so Unitree's controller has the upper body back |
 
 **Two ways to hold the robot up:**
 
@@ -255,6 +257,8 @@ Unitree's `unitree_lerobot` ships `eval_g1.py` for this job. We do not use it be
 
 - it fails with the current image server: it still uses the old image client API ([unitree_lerobot issue #103](https://github.com/unitreerobotics/unitree_lerobot/issues/103));
 - it assumes a stereo head camera and splits the head image in two halves. Our head camera is mono.
+
+Both problems are fixed in the lab's fork (below), which also got a dry run, a limited start move and a clean release on exit from a labmate's tests on the robot.
 
 `run_act.py` loads the same LeRobot checkpoint format, so a policy trained with `unitree_lerobot` or plain `lerobot-train` runs with it.
 

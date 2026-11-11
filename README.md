@@ -162,6 +162,7 @@ All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist
 | Clicking both thumbsticks | Soft emergency stop on the real robot (the motors go limp). Fixed in this repo's teleop script; with `--plain` (Unitree's script at the pinned commit) it crashes teleop. |
 | Real robot: teleop `--real`, waist on the right stick, `run_act.py --motion` with the waist | Written, checked in the simulator and with unit tests. **Not yet run on the real robot.** |
 | Stage 2 headset wrist views | Verified with a simulated web client and unit tests. **Not yet checked on a physical Quest 3** (the in-VR button and the left stick click need a headset check). |
+| Image server versions | The pinned xr_teleoperate has the teleimager 1.x client. A teleimager 2.x server (cameras nested under `camera` in its config) is handled by `01_teleop/g1sim/teleimager_compat.py`; this was not tested against a real 2.x server from this repo. |
 | Camera intrinsics | Head and wrist fields of view are datasheet values, not per-unit calibrations. |
 | Stage 3 lab scene | Cameras, objects, colours and image noise calibrated against the 52 real episodes. Known gaps (robot lean, background placement, glove shape) are listed in [stage 3, section 5](03_real2sim/README.md#5-how-close-is-it). |
 | `unitree_bridge` converter | Unit-tested with a stand-in module. **Untested against a real unitree_lerobot install.** |

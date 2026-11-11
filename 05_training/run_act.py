@@ -32,6 +32,8 @@ Safety (every tick, in this order; counters are printed per episode):
     on them runs slower than its plan with the defaults; --max-vel 2.5 --max-lead 0.9 lifts that in sim;
   * --max-seconds per episode; Ctrl-C stops the policy and HOLDS the current measured pose until a second
     Ctrl-C (then exit). After a normal end, --end start moves slowly back to the start pose, --end hold holds.
+    SIGTERM / SIGHUP (a dropped SSH connection) exit at once. With --motion every exit first returns to the
+    start pose and lowers the rt/arm_sdk weight to 0, so Unitree's controller has the upper body back.
 In sim each episode starts with a sim reset (objects re-randomised with --randomize) and counts successes
 (rt/sim_state). --record DIR saves the rollouts (state = measured, action = the command actually sent).
 """
@@ -390,6 +392,17 @@ class Runner:
         return st
 
 
+ARM_SDK_WEIGHT_INDEX = 29  # xr_teleoperate puts the rt/arm_sdk blend weight in motor_cmd[29].q
+
+
+def release_arm_sdk(robot, seconds=2.0, hz=CONTROL_HZ, sleep=time.sleep):
+    """--motion: hand arms and waist back to Unitree's controller by lowering the rt/arm_sdk weight 1 -> 0."""
+    steps = max(1, int(seconds * hz))
+    for k in range(1, steps + 1):
+        robot.arm.msg.motor_cmd[ARM_SDK_WEIGHT_INDEX].q = 1.0 - k / steps
+        sleep(1.0 / hz)
+
+
 def finish_recording(writer, st, save_on, log=print):
     if writer is None:
         return
@@ -479,7 +492,12 @@ def main(argv=None):
         print("\n[act] Ctrl+C: policy stopped, HOLDING the current pose (Ctrl+C again to exit)", flush=True)
         runner.stop = True
 
+    def on_terminate(sig, frame):  # e.g. a dropped SSH connection: nobody is there for a second Ctrl+C
+        raise KeyboardInterrupt
+
     signal.signal(signal.SIGINT, on_sigint)
+    for s in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(s, on_terminate)
     start_q = np.asarray(robot.state(), float)[:n]
     results = []
     try:
@@ -507,6 +525,19 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("[act] exit", flush=True)
     finally:
+        if a.motion and not a.dry_run:
+            # The upper body is under rt/arm_sdk until the weight goes back to 0, also after this program ends.
+            for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                signal.signal(s, signal.SIG_IGN)  # a second Ctrl+C must not cut the release short
+            print("[act] releasing: back to the start pose, then Unitree's controller takes the arms and waist "
+                  "over (Ctrl+C is ignored meanwhile, use the e-stop)", flush=True)
+            try:
+                runner.stop = False
+                runner.move_to(start_q)
+                release_arm_sdk(robot)
+                print("[act] released", flush=True)
+            except Exception as err:
+                print(f"[act] RELEASE FAILED: {err}", flush=True)
         signal.signal(signal.SIGINT, signal.default_int_handler)
         if writer is not None:
             writer.close()
