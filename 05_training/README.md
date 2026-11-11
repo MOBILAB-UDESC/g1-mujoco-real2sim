@@ -254,7 +254,7 @@ python unitree_lerobot/eval_robot/eval_g1.py \
     --arm=G1_29 --ee=none --waist=true --frequency=30
 ```
 
-Leave out `--waist=true` for a policy without the waist joint. The same changes are in `05_training/unitree_lerobot/eval_g1_waist_async.patch` (made against Unitree's commit `41c2805`; apply with `git apply`).
+Leave out `--waist=true` for a policy without the waist joint. On a PC without a GPU add `--policy.device=cpu --threads=4`. The same changes are in `05_training/unitree_lerobot/eval_g1_waist_async.patch` (made against Unitree's commit `41c2805`; apply with `git apply`).
 
 | Change | What it does |
 |---|---|
