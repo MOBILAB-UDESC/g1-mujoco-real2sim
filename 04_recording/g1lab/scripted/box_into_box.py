@@ -12,6 +12,7 @@ What the plan guarantees (learned from the first real-robot test of a policy tra
   * the hands never pass over the box: they stay below its top and outside its footprint (several cm to
     each side) until they close in sideways;
   * the upper arms stay clear of the torso (elbows out): at least TRUNK_CLEAR everywhere;
+  * no arm or hand touches the cardboard box: at least CARD_CLEAR from it in every planned pose and move;
   * the torso faces the box before the grasp, so neither arm has to reach across the body;
   * no joint is commanded faster than V_MAX (the real robot's runner limits commands to 1.0 rad/s);
   * widths, heights and the hand yaw follow the box's real size and orientation (upright or upside down,
@@ -59,7 +60,9 @@ JOINTS = [f"{side} {j}" for side in ("left", "right") for j in
 V_MAX = 0.85              # rad/s, fastest commanded joint (the robot-side runners clip at 1.0)
 TRUNK_CLEAR = 0.025       # m, arms to torso / waist / pelvis, planned
 TRUNK_CLEAR_MEASURED = 0.015  # m, the same on the measured joints (tracking error allowed)
-HAND_CLEAR = 0.012        # m, hands to the wrapped box and to the cardboard box while approaching
+HAND_CLEAR = 0.012        # m, hands to the wrapped box while approaching
+CARD_CLEAR = 0.012        # m, arms and hands to the cardboard box, planned, during the whole episode
+CARD_CLEAR_MEASURED = 0.004  # m, the same on the measured joints: nothing may touch the cardboard box
 MAX_LEAD = 0.25           # rad, command ahead of the measured joint
 SIDE_CLEAR = 0.06         # m, glove to box face while the hands come in beside the box (free side)
 HOME_WRIST = np.array([0.05, 0.32, 0.215])  # start pose: wrist frames (x, +-y, z) in the pelvis frame: hands
@@ -70,6 +73,7 @@ HOME_SEED = np.array([1.19, 0.48, 0.48, -0.81, -0.83, -0.22, -0.24,     # joint 
 POSTURE = np.full(14, np.nan)
 POSTURE[1], POSTURE[8] = 0.5, -0.5         # shoulder roll: elbows away from the body
 POSTURE_GAIN = 0.3
+LEFT_ELBOW = (0.5, 0.3, 0.15, 0.75, 1.0, 0.0)  # left shoulder roll postures to try, in this order
 
 
 def pace(robot, t):
@@ -147,14 +151,27 @@ class Planner:
         if self.jitter:
             for T in (L, R):
                 T[:3, 3] += self.rng.normal(0, self.jitter, 3)
-        q, err = self.M.ik(L, R, waist=waist, seed=self.seed if seed is None else seed, posture=POSTURE,
-                           posture_gain=POSTURE_GAIN)
-        if err > 0.003:
-            raise PlanError(f"{name}: out of reach by {err * 100:.1f} cm")
-        q15 = np.append(q, waist)
-        self.check(name, q15, check)
-        self.seed = q
-        return q15
+        # The same hand pose can be reached with the elbow more or less far out. Elbows out keeps the arms off
+        # the torso; next to the cardboard box the left forearm may have to come in straighter, or higher,
+        # to stay off its walls. The first elbow posture that passes every check is used.
+        failure = None
+        for left_roll in LEFT_ELBOW:
+            posture = POSTURE.copy()
+            posture[1] = left_roll
+            q, err = self.M.ik(L, R, waist=waist, seed=self.seed if seed is None else seed, posture=posture,
+                               posture_gain=POSTURE_GAIN)
+            if err > 0.003:
+                failure = failure or PlanError(f"{name}: out of reach by {err * 100:.1f} cm")
+                continue
+            q15 = np.append(q, waist)
+            try:
+                self.check(name, q15, check)
+            except PlanError as error:
+                failure = error
+                continue
+            self.seed = q
+            return q15
+        raise failure
 
     def check(self, name, q15, what):
         c = self.M.clearance(q15)
@@ -162,8 +179,8 @@ class Planner:
             raise PlanError(f"{name}: arm {c['arm_trunk'] * 100:.1f} cm from the torso")
         if "wrap" in what and min(c["hand_wrap"]) < HAND_CLEAR:
             raise PlanError(f"{name}: hand {min(c['hand_wrap']) * 100:.1f} cm from the wrapped box")
-        if "card" in what and c["hand_card"] < HAND_CLEAR:
-            raise PlanError(f"{name}: hand {c['hand_card'] * 100:.1f} cm from the cardboard box")
+        if "card" in what and c["arm_card"] < CARD_CLEAR:
+            raise PlanError(f"{name}: arm or hand {c['arm_card'] * 100:.1f} cm from the cardboard box")
         if "desk" in what and c["arm_desk"] < 0.01:
             raise PlanError(f"{name}: arm {c['arm_desk'] * 100:.1f} cm from the desk")
         return c
@@ -214,9 +231,9 @@ def plan_drop(P, home, floor, yaw_card, across, along, slide, palm_above_bottom,
             waist = float(np.clip(waist, 0.0, 1.0))
             try:
                 over = P.solve("over the cardboard box", wrist_targets([*xy, z], yaw, slide, across - press, across - press),
-                               waist, seed=seed)
+                               waist, seed=seed, check=("trunk", "card"))
                 release = P.solve("release", wrist_targets([*xy, z], yaw, slide, across + 0.06, across + 0.06), waist,
-                                  seed=over[:14])
+                                  seed=over[:14], check=("trunk", "card"))
                 return xy, waist, z, over, release, dict(inside=(round(float(u), 2), round(float(v), 2)), yaw=yaw,
                                                          turn_deg=round(float(np.degrees(turn))), overlap_cm=int(overlap))
             except PlanError:
@@ -282,7 +299,8 @@ def plan_episode(model, sim_state, home, p, rng):
                 P.check_path("lower beside the box", steps[-1][1], q, ("trunk", "wrap", "card"))
                 steps.append(("lower beside the box", q, "approach"))
                 grip = (across - p["press"], across - p["press"])
-                steps.append(("squeeze", P.solve("squeeze", wrist_targets(centre, g["yaw"], slide, *grip), waist), "grasp"))
+                steps.append(("squeeze", P.solve("squeeze", wrist_targets(centre, g["yaw"], slide, *grip), waist,
+                                                 check=("trunk", "card")), "grasp"))
                 # From here the box travels with the hands: plan without it.
                 model.hide_wrap()
                 palm_above_bottom = z_grasp - g["bottom"]
@@ -311,9 +329,15 @@ def plan_episode(model, sim_state, home, p, rng):
                         last = err
                 if lift is None:
                     raise last
+                P.check_path("lift", steps[-1][1], lift, ("trunk", "card"))
                 steps.append(("lift", lift, "carry"))
-                steps.append(("turn to the cardboard box", np.append(lift[:14], waist_drop), "carry"))
+                turned = np.append(lift[:14], waist_drop)
+                P.check_path("turn to the cardboard box", lift, turned, ("trunk", "card"), samples=10)
+                P.check("turn to the cardboard box", turned, ("trunk", "card"))
+                steps.append(("turn to the cardboard box", turned, "carry"))
+                P.check_path("over the cardboard box", turned, over, ("trunk", "card"), samples=10)
                 steps.append(("over the cardboard box", over, "carry"))
+                P.check_path("release", over, release, ("trunk", "card"))
                 steps.append(("release", release, "release"))
                 # Back: open hands straight back off the box, then the arms fold to their rest posture while
                 # the torso still faces the cardboard box, and only then the torso turns back. Turning first
@@ -323,7 +347,9 @@ def plan_episode(model, sim_state, home, p, rng):
                     try:
                         P.seed = release[:14]
                         last_q = P.solve("hands back", wrist_targets([*xy, z_carry + 0.02], drop["yaw"], slide - back,
-                                                                     across + 0.06, across + 0.06), waist_drop)
+                                                                     across + 0.06, across + 0.06), waist_drop,
+                                         check=("trunk", "card"))
+                        P.check_path("hands back", release, last_q, ("trunk", "card"))
                         steps.append(("hands back", last_q, "return"))
                         break
                     except PlanError:
@@ -350,7 +376,7 @@ class Episode:
     def __init__(self, robot, writer, model, p):
         self.robot, self.writer, self.M, self.p = robot, writer, model, p
         self.frames = 0
-        self.min_trunk, self.min_wrap = np.inf, np.inf
+        self.min_trunk, self.min_wrap, self.min_card = np.inf, np.inf, np.inf
         self.max_speed, self.max_lead = 0.0, 0.0
         self.phase, self.step, self.lead_at, self.load = "approach", "start", "", 0.0
         self._last_action = None
@@ -361,6 +387,7 @@ class Episode:
         state = np.asarray(obs["state"], float)
         c = self.M.clearance(state)
         self.min_trunk = min(self.min_trunk, c["arm_trunk"])
+        self.min_card = min(self.min_card, c["arm_card"])
         if self.phase == "approach":
             self.min_wrap = min(self.min_wrap, *c["hand_wrap"])
         lead = np.abs(action - state)
@@ -405,6 +432,8 @@ class Episode:
             return "box not in the cardboard box"
         if self.min_wrap < 0.003:
             return f"a hand touched the box before the squeeze ({self.min_wrap * 100:.1f} cm)"
+        if self.min_card < CARD_CLEAR_MEASURED:
+            return f"an arm or hand touched the cardboard box ({self.min_card * 100:.1f} cm)"
         if self.min_trunk < TRUNK_CLEAR_MEASURED:
             return f"arm {self.min_trunk * 100:.1f} cm from the torso"
         if self.max_speed > 1.0:
@@ -455,6 +484,7 @@ def run_episode(robot, writer, model, sim_state, home, rng, task=TASK):
             ep.hold(0.3)
     ep.hold(0.6)
     info.update(min_trunk_cm=round(ep.min_trunk * 100, 1), min_wrap_cm=round(ep.min_wrap * 100, 1),
+                min_card_cm=round(ep.min_card * 100, 1),
                 max_speed=round(ep.max_speed, 2), max_lead=round(ep.max_lead, 2), lead_at=ep.lead_at)
     return ep, info
 
@@ -474,6 +504,7 @@ def main():
                         "entry, each retried up to --tries times, then redrawn in the same stratum")
     p.add_argument("--tries", type=int, default=4, help="attempts on the same scene before it is redrawn")
     p.add_argument("--log", default=None, help="append one JSON line per attempt (scene, result, measurements)")
+    p.add_argument("--tag", default="", help="copied into every --log line (the recorder passes the part name)")
     p.add_argument("--offline", action="store_true",
                    help="no simulator process: run on a private copy of it, faster than real time, without "
                         "images (for trying the policy and for feasibility sweeps; nothing can be recorded)")
@@ -524,11 +555,16 @@ def main():
             if writer and (frames or writer.num_frames):
                 (writer.save_episode if success else writer.discard_episode)()
             ok += success
-            tries = 0 if success else tries + 1
+            if success:
+                tries = 0
+            elif verdict.startswith("no plan"):   # the same scene would have no plan again: draw another one
+                tries = (tries // a.tries + 1) * a.tries
+            else:
+                tries += 1
             print(f"[scripted] attempt {attempts}: {verdict.upper() if success else verdict} ({frames} frames, {info}) "
                   f"-> {ok}/{wanted}", flush=True)
             if log:
-                log.write(json.dumps(dict(attempt=attempts, kept=ok if success else None, verdict=verdict, want=want,
+                log.write(json.dumps(dict(tag=a.tag, attempt=attempts, kept=ok if success else None, verdict=verdict, want=want,
                                           scene=st.get("scene"), info=info)) + "\n")
                 log.flush()
     finally:

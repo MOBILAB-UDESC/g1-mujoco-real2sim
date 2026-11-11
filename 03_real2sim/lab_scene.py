@@ -229,7 +229,7 @@ WRAP_LUMPS = 0.004  # the bubble wrap's lumps stick out this far beyond the coll
 # Ranges of --randomize, per reset. Positions are in the desk's own frame; the whole desk (with both
 # boxes) then moves relative to the robot. sample_scene() draws from them.
 SCENE = dict(
-    desk_x=(-0.08, 0.02),    # m, desk relative to the robot: up to 8 cm nearer, 2 cm farther. Farther than that
+    desk_x=(-0.05, 0.02),    # m, desk relative to the robot: up to 5 cm nearer, 2 cm farther. Farther than that
     desk_y=(-0.05, 0.02),    # (or more to the left) the arms cannot get the box over the cardboard box's walls
     desk_yaw=2.0,            # deg
     card_xy=0.01,            # m, cardboard box on the desk (glued on the real setup)

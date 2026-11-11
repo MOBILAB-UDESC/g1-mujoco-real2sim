@@ -187,15 +187,14 @@ class SimModel:
         """Smallest distances [m] at joint angles q (negative = overlapping):
         arm_trunk  upper arms, forearms and hands to torso / waist / pelvis
         hand_wrap  each hand (glove, wrist camera) to the wrapped box: (left, right)
-        hand_card  hands to the cardboard box
+        arm_card   arms and hands to the cardboard box
         arm_desk   arms and hands to the desk top"""
         self.set_q(q)
         arms = self.arm_geoms["left"] + self.arm_geoms["right"]
-        hands = self.hand_geoms["left"] + self.hand_geoms["right"]
         return dict(
             arm_trunk=self._min_dist(arms, self.trunk_geoms),
             hand_wrap=(self._min_dist(self.hand_geoms["left"], self.wrap_geoms),
                        self._min_dist(self.hand_geoms["right"], self.wrap_geoms)),
-            hand_card=self._min_dist(hands, self.card_geoms),
+            arm_card=self._min_dist(arms, self.card_geoms),
             arm_desk=self._min_dist(arms, self.desk_geoms),
         )
