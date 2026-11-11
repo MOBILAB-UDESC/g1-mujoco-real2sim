@@ -64,7 +64,8 @@ REAL_CHECKLIST = """\
 REAL ROBOT checklist:
   [ ] G1 hanging on the gantry / stand, area around the arms clear, e-stop in reach of a second person
   [ ] robot in DEBUG mode (L2+R2 on the remote): run_act sends rt/lowcmd like xr_teleoperate without --motion
-      (with --motion: arm_sdk, the waist is NOT driven)
+      (with --motion: the robot stands in Unitree's walking mode and run_act sends rt/arm_sdk; the waist is
+      only driven with --motion-waist)
   [ ] nothing else is commanding the robot (xr_teleoperate, MCP, other run_act) - check with record_live
   [ ] image server running on PC2 (cam_head + both wrist cameras), lighting/scene like the training data
   [ ] checkpoint trained for THIS robot/camera setup; tried in sim and with --dry-run first
@@ -410,7 +411,11 @@ def parse_args(argv=None):
     p.add_argument("--image-port", type=int, default=60000, help="teleimager request port (sim --port-offset 1000 -> 61000)")
     p.add_argument("--image-host", default=None)
     p.add_argument("--iface", default=None)
-    p.add_argument("--motion", action="store_true", help="drive arms via rt/arm_sdk (robot in motion mode); no waist")
+    p.add_argument("--motion", action="store_true",
+                   help="robot in Unitree's walking mode (it balances the legs): drive the arms via rt/arm_sdk")
+    p.add_argument("--motion-waist", action="store_true",
+                   help="with --motion and a 15-joint policy: also drive the waist yaw via rt/arm_sdk "
+                        "(default: the waist stays where it is)")
     p.add_argument("--device", default="cpu")
     p.add_argument("--n-action-steps", type=int, default=None, help="re-plan every K steps (default: checkpoint's)")
     p.add_argument("--episodes", type=int, default=1)
@@ -443,8 +448,11 @@ def main(argv=None):
           + f" | limits {a.max_vel} rad/s, {a.max_lead} rad", flush=True)
     if policy.stats_warning:
         print(policy.stats_warning, flush=True)
+    drive_waist = (not a.motion) or a.motion_waist
     if a.motion and n == 15:
-        print("[act] --motion: the motion controller owns the waist; the policy's waist action is ignored", flush=True)
+        print("[act] --motion: " + ("the policy's waist action is sent through rt/arm_sdk" if drive_waist else
+                                    "the waist is left alone, the policy's waist action is ignored "
+                                    "(--motion-waist drives it)"), flush=True)
     if a.target == "real" and not a.dry_run:
         print(REAL_CHECKLIST.format(max_vel=a.max_vel, max_lead=a.max_lead, max_seconds=a.max_seconds))
         if input("Type 'yes' to run the policy on the REAL robot: ").strip().lower() != "yes":
@@ -467,7 +475,7 @@ def main(argv=None):
     gate = SafetyGate(*joint_limits(n), max_vel=a.max_vel, max_lead=a.max_lead)
     actor = AsyncChunks(policy.chunk) if a.replan == "async" else policy
     runner = Runner(robot, actor, n, gate, policy.cams, send=not a.dry_run, writer=writer,
-                    drive_waist=not a.motion, ramp_time=a.ramp_time, ramp_vel=a.ramp_vel)
+                    drive_waist=drive_waist, ramp_time=a.ramp_time, ramp_vel=a.ramp_vel)
 
     def on_sigint(sig, frame):
         if runner.stop:
@@ -495,7 +503,7 @@ def main(argv=None):
                 print("[act] holding pose (Ctrl+C to exit)", flush=True)
                 runner.stop = False
                 while True:  # keep streaming the hold target; exit on the next Ctrl+C
-                    robot.command(q if (n == 14 or not a.motion) else q[:14])
+                    robot.command(q if (n == 14 or drive_waist) else q[:14])
                     time.sleep(0.1)
             else:
                 print("[act] moving back to the start pose", flush=True)

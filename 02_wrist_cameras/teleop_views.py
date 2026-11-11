@@ -1,4 +1,6 @@
-"""Run Unitree's xr_teleoperate unmodified, with the two wrist camera views added to the headset display.
+"""Run xr_teleoperate with the two wrist camera views added to the headset display. The xr_teleoperate clone
+stays unmodified; the main script is this repo's 01_teleop/teleop_hand_and_arm.py (Unitree's script plus Quest
+buttons, pause and the waist stick), or Unitree's own with --upstream-teleop.
 
     python 02_wrist_cameras/teleop_views.py [--wrist-layout pip|side|off] [--wrist-side-span DEG]
                                             <teleop_hand_and_arm.py flags...>
@@ -25,7 +27,7 @@ Layouts (cycle pip -> side -> off):
         kept within --wrist-side-span degrees (default 94, i.e. +-47 deg, inside the Quest 3 FOV), which in
         immersive mode means shrinking the head plane to ~0.41 of its normal size (ego mode fits as is)
   off   exactly the plain xr_teleoperate display
-Toggle with: left controller X (controller input mode), the floating "WRIST VIEW" button in VR (point and
+Toggle with: a click on the left thumbstick (controller input mode), the floating "WRIST VIEW" button in VR (point and
 click/pinch), the button at the bottom-left of the web page, or the start option --wrist-layout.
 
 If the image server enables no wrist topic (demo scene without the wrist_cameras add-on), or the display
@@ -65,6 +67,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 THIRD_PARTY = os.environ.get("G1_THIRD_PARTY", os.path.join(REPO, "third_party"))
 TELEOP_DIR = os.path.join(THIRD_PARTY, "xr_teleoperate", "teleop")
+# This repo's version of teleop_hand_and_arm.py (Quest buttons, pause, waist stick); --upstream-teleop runs Unitree's.
+OUR_TELEOP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "01_teleop")
 
 LAYOUTS = ("pip", "side", "off")  # toggle order
 SIDES = ("left", "right")
@@ -253,12 +257,12 @@ class WristViews:
         self.set_layout(LAYOUTS[(LAYOUTS.index(self.layout) + 1) % len(LAYOUTS)], source)
         return True
 
-    def on_left_x(self, pressed):
-        """Rising edge of the left controller's X button (televuer's left_ctrl_aButton) toggles."""
+    def on_left_stick_click(self, pressed):
+        """Rising edge of a click on the left thumbstick toggles (left X starts teleop in our teleop script)."""
         pressed = bool(pressed)
         rising = pressed and not self._x_down
         self._x_down = pressed
-        return self.toggle("left X") if rising else False
+        return self.toggle("left stick click") if rising else False
 
     def on_click(self, event):
         """vuer CLICK (page Button: event.key) and ON_CLICK (3D mesh: event.value['key'])."""
@@ -418,7 +422,7 @@ class WristViewsTeleVuer(TeleVuer):
         self._wrist_thread = threading.Thread(target=self._wrist_copy_loop, daemon=True)
         self._wrist_thread.start()
         desc = ", ".join(f"{s} {w}x{h}" for s, (h, w, _) in self._views.streams.items())
-        toggles = "page button, VR button" + ("" if use_hand_tracking else ", left X")
+        toggles = "page button, VR button" + ("" if use_hand_tracking else ", left stick click")
         print(f"[wrist views] {desc}; layout {self._views.layout}; toggle: {toggles}", flush=True)
 
     def _wrist_copy_loop(self):
@@ -448,7 +452,7 @@ class WristViewsTeleVuer(TeleVuer):
     async def on_controller_move(self, event, session, fps=60):
         await super().on_controller_move(event, session, fps)
         if self._views is not None:
-            self._views.on_left_x(self.left_ctrl_aButton_shared.value)
+            self._views.on_left_stick_click(self.left_ctrl_thumbstick_shared.value)
 
     def close(self):
         super().close()
@@ -510,11 +514,13 @@ def main(argv=None):
     p.add_argument("--wrist-layout", choices=LAYOUTS, default="pip", help="wrist views at start (default pip)")
     p.add_argument("--wrist-side-span", type=float, default=SIDE_SPAN_DEG,
                    help=f"side layout: horizontal degrees the three views may cover (default {SIDE_SPAN_DEG:g})")
+    p.add_argument("--upstream-teleop", action="store_true",
+                   help="run Unitree's own teleop_hand_and_arm.py instead of this repo's 01_teleop/ version")
     ours, rest = p.parse_known_args(argv)
 
-    script = os.path.join(TELEOP_DIR, "teleop_hand_and_arm.py")
-    if not os.path.isfile(script):
-        sys.exit(f"xr_teleoperate not found: {script} (set G1_THIRD_PARTY)")
+    if not os.path.isfile(os.path.join(TELEOP_DIR, "teleop_hand_and_arm.py")):
+        sys.exit(f"xr_teleoperate not found: {TELEOP_DIR} (set G1_THIRD_PARTY)")
+    script = os.path.join(TELEOP_DIR if ours.upstream_teleop else OUR_TELEOP_DIR, "teleop_hand_and_arm.py")
     install(ours.wrist_layout, ours.wrist_side_span)
     logging_mp.basicConfig = lambda *a, **k: None  # already configured identically above
     # Same environment as `cd teleop && python teleop_hand_and_arm.py ...`.

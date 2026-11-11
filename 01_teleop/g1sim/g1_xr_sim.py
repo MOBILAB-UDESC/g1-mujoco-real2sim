@@ -14,6 +14,8 @@ Without --motion, xr_teleoperate drives every joint through rt/lowcmd (like debu
 With --motion, this file plays Unitree's motion controller: it owns legs and waist, blends the arms
 from rt/arm_sdk, and turns LocoClient.Move(vx, vy, vyaw) into motion. vx/vy walk in the direction the
 torso faces; vyaw twists the waist (look around), turning the whole body past the waist limit.
+If the sender moves the waist yaw target on rt/arm_sdk (teleop --waist-stick, run_act --motion-waist), the
+sim behaves like the real robot instead: the waist follows rt/arm_sdk and vyaw turns the whole body.
 Walking is kinematic (the "gantry" carries the pelvis while the legs animate), so it needs FIXED mode.
 
 Viewer keys:  9 = toggle fixed pelvis / free-standing,  0 = reset robot and objects.
@@ -350,6 +352,11 @@ class G1XrSim:
         self.arm_sdk = np.zeros((5, 14))
         self.arm_sdk_weight = 0.0
         self.last_arm_sdk_time = None
+        # Waist yaw target on rt/arm_sdk. xr_teleoperate keeps it at the start angle; a sender that moves it
+        # (this repo's teleop --waist-stick, run_act --motion-waist) takes the waist over, as on the real robot.
+        self.arm_sdk_waist = 0.0
+        self.arm_sdk_waist0 = None
+        self.waist_from_sdk = False
         self.mode = None  # "lowcmd" | "motion" | None (sim holds the pose) - only used for logging
 
         # Motion-controller state (used when rt/lowcmd is not driving the robot).
@@ -413,10 +420,18 @@ class G1XrSim:
 
     def _on_arm_sdk(self, msg: LowCmd_):
         c = np.array([[mc.q, mc.dq, mc.kp, mc.kd, mc.tau] for mc in msg.motor_cmd[ARMS]]).T
+        waist = float(msg.motor_cmd[WAIST_YAW].q)
         with self.cmd_lock:
+            now = time.monotonic()
+            if self.last_arm_sdk_time is None or now - self.last_arm_sdk_time > CMD_TIMEOUT:
+                self.arm_sdk_waist0, self.waist_from_sdk = waist, False   # a new sender connected
+            elif not self.waist_from_sdk and abs(waist - self.arm_sdk_waist0) > 1e-4:
+                self.waist_from_sdk = True
+                print("[sim] waist yaw is commanded through rt/arm_sdk; the right stick turns the body")
             self.arm_sdk[:] = c
+            self.arm_sdk_waist = waist
             self.arm_sdk_weight = float(np.clip(msg.motor_cmd[ARM_SDK_WEIGHT].q, 0.0, 1.0))
-            self.last_arm_sdk_time = time.monotonic()
+            self.last_arm_sdk_time = now
 
     def _on_loco_request(self, msg: Request_):
         api = msg.header.identity.api_id
@@ -520,6 +535,10 @@ class G1XrSim:
     def loco_step(self):
         """Advance the emulated motion controller by one physics step (joystick walking + waist twist)."""
         dt, d = self.dt, self.data
+        with self.cmd_lock:
+            sdk_waist = self.arm_sdk_waist if (
+                self.waist_from_sdk and self.last_arm_sdk_time is not None
+                and time.monotonic() - self.last_arm_sdk_time < CMD_TIMEOUT) else None
         with self.loco_lock:
             v = self.vel_cmd.copy() if time.monotonic() < self.vel_cmd_until else np.zeros(3)
             vx, vy = v[0] * self.args.walk_scale, v[1] * self.args.walk_scale
@@ -530,21 +549,29 @@ class G1XrSim:
             if not self.fixed:
                 vx = vy = 0.0
 
-            # Right stick twists the waist; past the limit the whole body turns (in FIXED mode).
-            waist = self.waist_yaw + vyaw * dt
-            overflow = waist - np.clip(waist, -WAIST_YAW_LIMIT, WAIST_YAW_LIMIT)
-            waist -= overflow
-            if self.fixed:
-                self.base_yaw += overflow
             speed = np.hypot(vx, vy)
-            if speed > 1e-3:  # while walking the pelvis turns toward where the torso looks
-                follow = waist * min(1.0, BODY_FOLLOW_RATE * dt)
-                self.base_yaw += follow
-                waist -= follow
+            if sdk_waist is not None:
+                # Real-robot behaviour: the waist follows rt/arm_sdk, Move's vyaw turns the body, and the
+                # robot walks where the pelvis faces.
+                waist = float(np.clip(sdk_waist, -WAIST_YAW_LIMIT, WAIST_YAW_LIMIT))
+                overflow = v[2] * dt if self.fixed else 0.0
+                self.base_yaw += overflow
+                heading = self.base_yaw
+            else:
+                # Right stick twists the waist; past the limit the whole body turns (in FIXED mode).
+                waist = self.waist_yaw + vyaw * dt
+                overflow = waist - np.clip(waist, -WAIST_YAW_LIMIT, WAIST_YAW_LIMIT)
+                waist -= overflow
+                if self.fixed:
+                    self.base_yaw += overflow
+                if speed > 1e-3:  # while walking the pelvis turns toward where the torso looks
+                    follow = waist * min(1.0, BODY_FOLLOW_RATE * dt)
+                    self.base_yaw += follow
+                    waist -= follow
+                # Left stick walks in the torso's facing direction.
+                heading = self.base_yaw + waist
             self.waist_yaw = waist
 
-            # Left stick walks in the torso's facing direction.
-            heading = self.base_yaw + waist
             c, s = np.cos(heading), np.sin(heading)
             d.mocap_pos[self.gantry][:2] += np.array([c * vx - s * vy, s * vx + c * vy]) * dt
             d.mocap_quat[self.gantry] = yaw_quat(self.base_yaw)

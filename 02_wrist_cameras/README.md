@@ -57,7 +57,7 @@ scripts/run_teleop.sh --controller
 You should see this line in terminal 2 during start-up:
 
 ```
-[wrist views] left 640x480, right 640x480; layout pip; toggle: page button, VR button, left X
+[wrist views] left 640x480, right 640x480; layout pip; toggle: page button, VR button, left stick click
 ```
 
 Three layouts exist:
@@ -81,7 +81,7 @@ Four ways to switch. Each press goes to the next layout: `pip` -> `side` -> `off
 | On the web page, before entering VR | Click the button at the bottom-left of the page |
 | At start | `scripts/run_teleop.sh --controller --wrist-layout side` |
 
-Each switch prints a line like `[wrist views] layout pip -> side (left X)` in terminal 2.
+Each switch prints a line like `[wrist views] layout pip -> side (left stick click)` in terminal 2.
 
 Options:
 
@@ -135,7 +135,7 @@ To write your own add-on (another camera, a tool, a scene), see the add-on secti
 - **Wrist views missing after switching display mode**: they are only drawn in the `immersive` and `ego` display modes of xr_teleoperate, not in `pass-through`.
 - **The gloves look cut open near the camera**: only happens if you changed `znear` or the model extent. The add-on sets a 5 mm near plane so the gloves stay visible.
 - **The headset video got slower**: three cameras are rendered instead of two. Run the sim with `--no-viewer`, or switch the layout to `off`.
-- **X does nothing**: X only works in controller mode (`--controller`). In hand-tracking mode use the WRIST VIEW button or the page button.
+- **Clicking the left stick does nothing**: it only works in controller mode (`--controller`). In hand-tracking mode use the WRIST VIEW button or the page button.
 
 More cases: [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).
 

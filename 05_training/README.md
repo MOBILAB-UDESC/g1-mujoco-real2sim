@@ -181,6 +181,7 @@ Each episode starts with a sim reset (new random layout with `--randomize`) and 
 | `--threads N` | 4 | PyTorch CPU threads for inference |
 | `--n-action-steps K` | from the checkpoint | Only with `--replan chunk`: re-plan every K steps |
 | `--device` | `cpu` | `cuda` if this PC has one |
+| `--motion`, `--motion-waist` | off | Robot in Unitree's walking mode: arms through `rt/arm_sdk`; with `--motion-waist` the waist too (step 6) |
 | `--record DIR` | off | Save the rollouts as a LeRobot dataset (`--save-on success` keeps successes only) |
 | `--dry-run` | off | Compute actions from the live cameras and joints but **send nothing** |
 | `--max-vel`, `--max-lead` | 1.0 rad/s, 0.25 rad | Safety limits, see step 6. The scripted sim episodes move at up to 2.1 rad/s, so a policy trained on them runs slower than its plan with the defaults; in sim you can pass `--max-vel 2.5 --max-lead 0.9` |
@@ -194,6 +195,15 @@ Each episode starts with a sim reset (new random layout with `--randomize`) and 
 ## 6. Real robot
 
 **Status: implemented, not yet run on the real robot.** Read everything in this section before you try.
+
+Two programs can run a policy on the robot. Both load the same checkpoint and have the same safety limits and the same handling of the waist and the cameras:
+
+| Program | Use it when |
+|---|---|
+| `05_training/run_act.py` (this repo) | You have this repo installed. It also has the slow start ramp, the dry run, Ctrl+C hold and rollout recording. **Recommended.** |
+| `eval_g1.py` in [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot) (branch `mobilab`) | The PC only has Unitree's LeRobot tools. Same flags as Unitree's script plus `--waist`, `--max_vel`, `--max_lead`, `--replan`. See section 7. |
+
+The rest of this section is about `run_act.py`.
 
 First, with the robot on and **nothing commanding it**, a dry run. It reads the real cameras and joints, computes actions, and sends nothing:
 
@@ -230,7 +240,14 @@ Safety built into `run_act.py`, every control tick:
 | Time limit | `--max-seconds` per episode |
 | **Ctrl+C** | Stops the policy and **holds the current pose**. A second Ctrl+C exits. |
 
-With `--motion` the arms are driven through `rt/arm_sdk` (robot in motion mode) and the waist is not driven.
+**Two ways to hold the robot up:**
+
+| Mode | Flags | Legs | Waist |
+|---|---|---|---|
+| Debug mode (default) | none | Held stiff at their start angles by `run_act.py`. Nothing balances: the robot must hang on the gantry or stand. | Driven by a 15-joint policy |
+| Walking mode | `--motion` | Unitree's own controller balances them; the robot stands by itself (R1+X on the remote) | Left alone, unless you add `--motion-waist`: then the policy's waist command is sent on `rt/arm_sdk`, next to the arms |
+
+`--motion --motion-waist` was checked in the simulator's emulation of walking mode (3 of 4 episodes successful with the sim-trained policy), not on the real robot. A turned torso shifts the robot's weight: try it with small motions first.
 
 ## 7. Why this repo has its own runner
 

@@ -104,8 +104,9 @@ Press [r] to start syncing the robot with your movements.
 ```
 
 - The address is the PC's IP. `:8080` is a short link that redirects to the full `https://<pc-ip>:8012/?ws=wss://<pc-ip>:8012`.
-- Any other flag goes to Unitree's `teleop_hand_and_arm.py`, for example `--record` (see [stage 4](../04_recording/README.md)).
-- `scripts/run_teleop.sh --plain` runs Unitree's script with nothing added. Without `--plain`, a small launcher adds the wrist camera views of [stage 2](../02_wrist_cameras/README.md); in this stage there are no wrist cameras, so it behaves exactly like the plain one.
+- Any other flag goes to `teleop_hand_and_arm.py`, for example `--record` (see [stage 4](../04_recording/README.md)).
+- The script that runs is [teleop_hand_and_arm.py](teleop_hand_and_arm.py) in this folder: Unitree's script with Quest buttons, a pause that does not end the program, and the waist on the right stick. Unitree's `xr_teleoperate` clone itself stays unmodified.
+- `scripts/run_teleop.sh --plain` runs Unitree's own script with nothing added (no Quest buttons, no waist stick). Without `--plain`, a small launcher adds the wrist camera views of [stage 2](../02_wrist_cameras/README.md); in this stage there are no wrist cameras, so it behaves exactly like the plain one.
 
 ## 5. Connect the Quest 3
 
@@ -131,13 +132,14 @@ You should see `[sim] driven by rt/arm_sdk + joysticks (xr_teleoperate --motion)
 |---|---|
 | Controllers / hands | The robot's wrists follow yours |
 | **Left stick** (controller mode) | Walk forward/back and sideways, in the direction the torso faces (max 0.3 m/s) |
-| **Right stick** left/right (controller mode) | Twist the waist to look around, feet still. Past about 86 degrees the whole body turns. |
-| **A** (right controller) | Stop teleop |
-| **r** in terminal 2 | Start following |
-| **q** in terminal 2 | Stop teleop. The arms go home first. |
-| **s** in terminal 2 | Start / save an episode, only when started with `--record` |
+| **Right stick** left/right (controller mode) | Twist the waist to look around, feet still. Past the limit (1.0 rad, `--waist-limit`) the whole body turns. While walking, the body turns to where the torso looks. |
+| **X** (left controller) or **r** in terminal 2 | Start following, or resume after a pause |
+| **B** (right controller) or **a** in terminal 2 | Pause: the robot stops following and holds its pose. An open recording is saved. |
+| **Y** (left controller) or **s** in terminal 2 | Start / save an episode, only when started with `--record` |
+| **A** (right controller) or **q** in terminal 2 | Quit. The waist untwists and the arms go home first. |
+| Click the **left stick** | Switch the wrist camera views ([stage 2](../02_wrist_cameras/README.md)) |
 
-**Warning: do not click both thumbsticks in at the same time.** On the real robot that is the soft emergency stop (Damp: the motors go limp). With the xr_teleoperate commit pinned here, that code path calls a function that does not exist, so teleop crashes.
+**Warning: clicking both thumbsticks in at the same time is the soft emergency stop** (Damp: on the real robot the motors go limp and it sinks down). In the sim it only stops the walking. With `--plain`, Unitree's script at the pinned commit calls a function that does not exist there and teleop crashes.
 
 Walking only works in **FIXED** mode (see step 8). It is kinematic: an invisible "gantry" carries the pelvis and the legs play a stepping animation.
 
@@ -186,6 +188,31 @@ To change the scene, edit [g1sim/scenes/scene_demo.xml](g1sim/scenes/scene_demo.
 - xr_teleoperate is started with `--sim --network-interface lo --img-server-ip 127.0.0.1`, the same flags Unitree uses for its Isaac simulation.
 
 More: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
+## 10. The same on the real robot
+
+**Status: written for the real G1, not yet run on it from this repo.** The start, pause, record and quit buttons come from the script the lab used for its real recordings; the waist on the right stick and the launcher's `--real` mode are new and were only checked in the simulator and with unit tests.
+
+The PC must be on the robot's network (it can ping `192.168.123.164`) and the image server must run on the robot's PC2, as for Unitree's xr_teleoperate.
+
+| What you want | Command | The robot must be |
+|---|---|---|
+| Arms only, hand tracking | `scripts/run_teleop.sh --real --iface <network interface>` | Hanging on the gantry or stand. The script switches the robot to debug mode: the legs are held stiff, **nothing balances**. |
+| Arms + walking + waist, controllers | `scripts/run_teleop.sh --real --controller --iface <network interface>` | Standing in Unitree's regular walking mode (R1+X on the remote). Unitree's own controller keeps balancing and walking the legs. |
+
+- Add `--record` to record episodes, as in the sim.
+- The script prints a checklist and waits until you type `yes`.
+- `--iface` is the PC's network interface on the robot's network (`ip addr` shows it); `G1_IFACE` sets it once. `G1_IMG_SERVER` changes the image server address.
+
+How walking mode works, and why the waist can move in it:
+
+| Part | Who controls it | How |
+|---|---|---|
+| Legs, balance | Unitree's onboard controller | The left stick only sends it a wanted speed (forward, sideways) and the turn rate |
+| Arms | The teleop script | Joint targets on `rt/arm_sdk`, Unitree's channel for the upper body |
+| Waist yaw | The teleop script | A target on the same `rt/arm_sdk` message. Unitree's own SDK example (`g1_arm7_sdk_dds_example.py`) commands the waist this way. |
+
+Unitree's script already sends a waist target on that channel, but a fixed one (the angle at start). Ours moves it with the right stick. Start with small twists and somebody at the emergency stop: how steadily the robot walks with the torso turned has not been measured.
 
 ## Troubleshooting
 

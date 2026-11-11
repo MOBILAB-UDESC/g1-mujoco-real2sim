@@ -27,10 +27,11 @@ The licenses above were read from the `LICENSE` file of each repository at the p
 | [LeRobot](https://github.com/huggingface/lerobot) 0.4.1 | Dataset format, ACT policy, training and editing tools | Apache-2.0 |
 | PyTorch, pinocchio, casadi, OpenCV, vuer, pyzmq, PyAV and their dependencies | Installed by pip / conda | Their own licenses |
 
-## 3. Assets stored in this repository
+## 3. Code and assets stored in this repository
 
 | Files | Origin | License / note |
 |---|---|---|
+| `01_teleop/teleop_hand_and_arm.py` | Unitree's `teleop/teleop_hand_and_arm.py` from xr_teleoperate (commit `817fb00c`), changed by MOBILAB: Quest buttons, pause, waist stick, damping call. The changes are listed at the top of the file. | Apache-2.0 |
 | `02_wrist_cameras/assets/mesh/*_wrist_yaw_link_5010.STL`, `02_wrist_cameras/assets/src/*_rubber_hand.STL` | Unitree G1 description in [unitreerobotics/unitree_ros](https://github.com/unitreerobotics/unitree_ros) | BSD-3-Clause |
 | `02_wrist_cameras/assets/mesh/glove_*.obj` | Made here from Unitree's rubber hand mesh (inflated, UV-mapped) | Derived from the above |
 | `02_wrist_cameras/assets/mesh/d405_intel.stl`, `02_wrist_cameras/assets/src/_d405.urdf.xacro` | Intel RealSense D405 model from `realsense2_description` in [IntelRealSense/realsense-ros](https://github.com/IntelRealSense/realsense-ros) | Apache-2.0 |

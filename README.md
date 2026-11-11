@@ -127,6 +127,18 @@ g1-mujoco-real2sim/
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Something does not work |
 | [docs/PUBLISHING.md](docs/PUBLISHING.md) | You are a maintainer: push the repo, upload datasets |
 
+### On the real robot
+
+Everything needed to go from the simulator to the real G1 is in this repo. None of it has been run on the real robot from here yet, except what the lab already used for its real recordings (the Quest start / pause / record / quit buttons).
+
+| Step | Command | Guide |
+|---|---|---|
+| Teleoperate, arms only (robot on the gantry) | `scripts/run_teleop.sh --real --iface <interface>` | [01_teleop, step 10](01_teleop/README.md#10-the-same-on-the-real-robot) |
+| Teleoperate arms + walking + waist (robot standing by itself) | `scripts/run_teleop.sh --real --controller --iface <interface>` | same |
+| Record episodes | add `--record` | [04_recording](04_recording/README.md) |
+| Run a trained policy | `python 05_training/run_act.py --policy-path <model> --target real` | [05_training, step 6](05_training/README.md#6-real-robot) |
+| Run a policy from a PC with only Unitree's LeRobot tools | `eval_g1.py` of [MOBILAB-UDESC/unitree_lerobot](https://github.com/MOBILAB-UDESC/unitree_lerobot) | [05_training, step 7](05_training/README.md) |
+
 ## 7. Datasets
 
 Datasets are not in git. They live on the Hugging Face Hub, in the [mobilab-udesc](https://huggingface.co/mobilab-udesc) organisation.
@@ -147,8 +159,9 @@ All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist
 |---|---|
 | Stage 1 teleop in sim (hand tracking and controller mode) | Works. |
 | Free-standing mode | No balance controller. Walking is kinematic and only works in FIXED mode. |
-| Clicking both thumbsticks | Soft emergency stop on the real robot. With the pinned xr_teleoperate commit it crashes teleop. Do not use it in sim. |
-| Stage 2 headset wrist views | Verified with a simulated web client and unit tests. **Not yet checked on a physical Quest 3** (the in-VR button and the X button need a headset check). |
+| Clicking both thumbsticks | Soft emergency stop on the real robot (the motors go limp). Fixed in this repo's teleop script; with `--plain` (Unitree's script at the pinned commit) it crashes teleop. |
+| Real robot: teleop `--real`, waist on the right stick, `run_act.py --motion-waist` | Written, checked in the simulator and with unit tests. **Not yet run on the real robot.** |
+| Stage 2 headset wrist views | Verified with a simulated web client and unit tests. **Not yet checked on a physical Quest 3** (the in-VR button and the left stick click need a headset check). |
 | Camera intrinsics | Head and wrist fields of view are datasheet values, not per-unit calibrations. |
 | Stage 3 lab scene | Cameras, objects, colours and image noise calibrated against the 52 real episodes. Known gaps (robot lean, background placement, glove shape) are listed in [stage 3, section 5](03_real2sim/README.md#5-how-close-is-it). |
 | `unitree_bridge` converter | Unit-tested with a stand-in module. **Untested against a real unitree_lerobot install.** |

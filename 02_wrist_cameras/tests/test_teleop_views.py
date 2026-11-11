@@ -183,12 +183,12 @@ def test_toggle_cycle_and_inputs(views):
         views.toggle()
         seen.append(views.layout)
     assert seen == ["side", "off", "pip", "side"]
-    # left X: rising edge only
+    # left stick click: rising edge only
     views.set_layout("pip")
-    assert views.on_left_x(True) and views.layout == "side"
-    assert not views.on_left_x(True) and views.layout == "side"  # held
-    assert not views.on_left_x(False)
-    assert views.on_left_x(True) and views.layout == "off"
+    assert views.on_left_stick_click(True) and views.layout == "side"
+    assert not views.on_left_stick_click(True) and views.layout == "side"  # held
+    assert not views.on_left_stick_click(False)
+    assert views.on_left_stick_click(True) and views.layout == "off"
     # clicks
     class Ev:
         def __init__(self, **kw):
