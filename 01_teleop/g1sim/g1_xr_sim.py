@@ -120,6 +120,8 @@ def parse_args(argv=None):
     p.add_argument("--free", action="store_true", help="start free-standing instead of with a fixed pelvis")
     p.add_argument("--no-viewer", action="store_true", help="run headless")
     p.add_argument("--no-camera", action="store_true", help="disable the head camera image server")
+    p.add_argument("--no-camera-window", action="store_true",
+                   help="with the viewer: do not open the second window that shows what the robot's cameras see")
     p.add_argument("--walk-scale", type=float, default=1.0,
                    help="multiplier on joystick walk speed (xr_teleoperate caps it at 0.3 m/s)")
     p.add_argument("--turn-scale", type=float, default=2.0,
@@ -258,6 +260,7 @@ class CameraServer:
         self.renderer = mujoco.Renderer(model, height=args.img_h, width=args.img_w)
         self.frames = 0    # rendered frames (run() reports the rate)
         self.streams = []  # (topic, zmq port, [camera ids], shadows)
+        self.preview = {}  # zmq port -> latest published RGB image
         self.cam_config = {}
         for topic, (zmq_port, webrtc_port) in CAMERA_PORTS.items():
             if topic == "head_camera":
@@ -304,6 +307,21 @@ class CameraServer:
                 pass
         self.queue.put_nowait(frames)
 
+    def show(self, window="G1 cameras (head | left wrist | right wrist)", height=240):
+        """Draw the latest published images side by side in an OpenCV window (call from the main thread)."""
+        tiles = []
+        for topic, port, _, _ in self.streams:
+            rgb = self.preview.get(port)
+            if rgb is None:
+                return
+            w = int(round(rgb.shape[1] * height / rgb.shape[0]))
+            tile = cv2.cvtColor(cv2.resize(rgb, (w, height), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2BGR)
+            cv2.putText(tile, topic.replace("_camera", "").replace("_", " "), (6, 16), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, (0, 255, 255), 1, cv2.LINE_AA)
+            tiles.append(tile)
+        cv2.imshow(window, np.hstack(tiles))
+        cv2.waitKey(1)
+
     def _encode_loop(self):
         while True:
             for port, views in self.queue.get():
@@ -311,6 +329,7 @@ class CameraServer:
                 for effect in self.effects:
                     views = [(name, effect(view, name)) for name, view in views]
                 rgb = views[0][1] if len(views) == 1 else np.hstack([v for _, v in views])
+                self.preview[port] = rgb  # as published (after the effects), for the camera window
                 ok, jpg = cv2.imencode(".jpg", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), self.encode_params)
                 if ok:
                     self.publisher.publish(jpg.tobytes(), port)
@@ -386,7 +405,7 @@ class G1XrSim:
         self.running = False
         self.dropped_steps = 0
         self.fixed = not args.free
-        self.pending = queue.Queue()  # actions requested from other threads ("toggle", "reset", "reset_objects")
+        self.pending = queue.Queue()  # from other threads: "toggle", "reset", ("reset_objects", wanted scene or None)
         self.reset(robot=True)
 
     # -------------------------------- DDS --------------------------------
@@ -444,8 +463,17 @@ class G1XrSim:
                 self.vel_cmd[:] = 0.0
 
     def _on_reset_cmd(self, msg: String_):
-        print(f"[sim] rt/reset_pose/cmd '{msg.data}' -> resetting objects")
-        self.pending.put("reset_objects")
+        """Reset the objects. Unitree's tools send a category number; a JSON object instead asks the scene
+        add-on for a specific scene (lab_scene.sample_scene: strata and seed)."""
+        want = None
+        if msg.data.lstrip().startswith("{"):
+            try:
+                want = json.loads(msg.data)
+            except ValueError:
+                print(f"[sim] rt/reset_pose/cmd: not valid JSON, ignored: {msg.data[:80]}")
+                return
+        print(f"[sim] rt/reset_pose/cmd '{msg.data[:120]}' -> resetting objects")
+        self.pending.put(("reset_objects", want))
 
     def _low_state_loop(self):
         n = NUM_BODY_MOTORS
@@ -488,7 +516,7 @@ class G1XrSim:
         self.sim_state_pub.Write(String_(data=json.dumps(state)))
 
     # ------------------------------ physics ------------------------------
-    def reset(self, robot=True):
+    def reset(self, robot=True, want=None):
         m, d = self.model, self.data
         if robot:
             mujoco.mj_resetData(m, d)
@@ -498,7 +526,8 @@ class G1XrSim:
             d.mocap_pos[self.gantry] = self.stand_pos
             d.mocap_quat[self.gantry] = [1, 0, 0, 0]
         if self.task:
-            self.task.reset_objects(d, randomize_objects=getattr(self.task, "randomize", False))
+            extra = {"want": want} if want else {}
+            self.task.reset_objects(d, randomize_objects=getattr(self.task, "randomize", False), **extra)
         elif not robot:
             for name in self.objects:
                 jnt = m.body(name).jntadr[0]
@@ -638,8 +667,8 @@ class G1XrSim:
             elif action == "reset":
                 self.reset(robot=True)
                 print("[sim] reset robot and objects")
-            elif action == "reset_objects":
-                self.reset(robot=False)
+            elif isinstance(action, tuple) and action[0] == "reset_objects":
+                self.reset(robot=False, want=action[1])
 
     def key_callback(self, key):
         if key == KEY_TOGGLE_BASE:
@@ -692,6 +721,8 @@ class G1XrSim:
             video = cv2.VideoWriter(args.debug_video, cv2.VideoWriter_fourcc(*"mp4v"), 15, (640, 480))
         log = [] if args.log_qpos else None
         shown_fixed = None
+        # A second window with the robot's own camera views, next to the viewer.
+        cam_window, last_window = bool(cam and viewer and not args.no_camera_window), 0.0
         self.running = True
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: setattr(self, "running", False))
@@ -715,6 +746,9 @@ class G1XrSim:
                     # Fixed timeline (not "now"), so being a few ms late doesn't lower the frame rate.
                     last_cam = last_cam + cam_period if now - last_cam < 2 * cam_period else now
                     cam.render(self.data, self.sim_lock)
+                if cam_window and now - last_window >= 0.1:
+                    last_window = now
+                    cam.show()
                 if video and now - last_video >= 1 / 15:
                     last_video = now
                     with self.sim_lock:

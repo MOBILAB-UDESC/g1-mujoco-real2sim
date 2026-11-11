@@ -5,25 +5,33 @@ rounded edges whose upper third bulges out (the wrap overhangs), a crease where 
 crumpled top. So:
   * mesh: a rounded box (superquadric) with that profile, smooth bulges + fine wrinkles, flat bottom,
     origin at the centre of the bottom face; per-vertex normals so it shades as one soft surface;
-  * texture: an atlas [+x | +y | -x | -y | top] made from what the robot's own cameras recorded, so the
-    sim images have the real bubble statistics at the scale each camera sees them:
-      -x (the face toward the robot) and the top: rectified from a real head-camera frame;
-      +-y (the faces the palms squeeze, seen close up by the wrist cameras): real wrist-camera close-ups;
-    with the recordings' own shading partly flattened (the sim's lights shade the object again).
+  * texture: an atlas [+x | +y | -x | -y | top | bottom], one tile per face, from photos of the real object
+    on a white background (ref/wrapped_box/top.jpg, bottom.jpg and sides.jpg = its four sides in a 2 x 2
+    grid): each face is found in its photo, cut out and brought to the brightness of the previous texture
+    (which was fitted to the robot's recordings, calib/photometric.json), with the photo's own shading
+    partly flattened (the sim's lights shade the object again).
+    --from-recordings builds the older 5-face texture from the robot's camera frames instead
+    (needs calib/real_refs/ from tools/extract_real_refs.py; the bottom then reuses the +x tile).
 Supersedes the wrapped box that blender_build_lab.py writes (same file names, so scene_lab.xml is unchanged).
-Needs the reference frames from tools/extract_real_refs.py (calib/real_refs/); the generated mesh and
-texture are committed, so this only has to run when you change the object.
+The generated mesh and texture are committed, so this only has to run when you change the object.
 
     python 03_real2sim/assets/lab/make_wrapped_box.py
 """
 
 import os
+import sys
 
 import cv2
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REFS = os.path.join(HERE, "..", "..", "calib", "real_refs")
+PHOTOS = os.path.join(HERE, "ref", "wrapped_box")
+TILES = 6                                # atlas tiles: +x, +y, -x, -y, top, bottom
+OLD_MEAN_BGR = np.array([160.8, 151.7, 143.6])  # mean colour of the texture the photometric calibration was fitted
+                                                # with (from the robot's own frames, in the lab's light)
+SIDE_CHROMA = 0.35   # the studio photos show the brown cardboard through the wrap much more than the lab does:
+                     # keep this share of the sides' colour, the rest becomes the wrap's own grey-white
 HEAD_FRAME = "ep000_f0000_cam_head.png"
 WRIST_FRAMES = ("ep000_f0000_cam_left_wrist.png", "ep023_f0000_cam_left_wrist.png")
 MESH = os.path.join(HERE, "mesh", "wrapped_box.obj")
@@ -38,7 +46,7 @@ FRONT_QUAD = [(250, 133), (505, 133), (480, 343), (268, 343)]
 TOP_QUAD = [(275, 28), (485, 28), (505, 133), (250, 133)]
 WRIST_PATCH = (0, 250, 320, 480)         # x0, y0, x1, y1: bubble wrap filling the wrist image
 # faces: (axis, sign, u axis, v axis, atlas tile)
-FACES = [(0, 1, 1, 2, 0), (1, 1, 0, 2, 1), (0, -1, 1, 2, 2), (1, -1, 0, 2, 3), (2, 1, 0, 1, 4), (2, -1, 0, 1, 0)]
+FACES = [(0, 1, 1, 2, 0), (1, 1, 0, 2, 1), (0, -1, 1, 2, 2), (1, -1, 0, 2, 3), (2, 1, 0, 1, 4), (2, -1, 0, 1, 5)]
 
 
 def bumps(q, rng_seed=5):
@@ -83,7 +91,7 @@ def build_mesh():
         v = (vv.reshape(-1) + 1) / 2
         flip = (axis == 0 and sign < 0) or (axis == 1 and sign > 0)
         u = 1 - u if flip else u
-        u = (tile + 0.03 + 0.94 * u) / 5
+        u = (tile + 0.03 + 0.94 * u) / TILES
         v = 0.03 + 0.94 * v
         base = len(verts)
         verts += x.tolist()
@@ -150,7 +158,52 @@ def build_texture():
     cv2.imwrite(TEX, np.clip(atlas, 0, 255).astype(np.uint8))
 
 
+def find_object(img):
+    """Bounding box (x0, y0, x1, y1) of the bubble-wrapped box on its plain background: the wrap is full of
+    fine detail, the background has none."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    detail = cv2.GaussianBlur(np.abs(cv2.Laplacian(gray, cv2.CV_32F, ksize=3)), (0, 0), img.shape[1] / 40)
+    mask = (detail > 0.35 * np.percentile(detail, 97)).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    x, y, w, h = stats[k, :4]
+    return x, y, x + w, y + h
+
+
+def face_tile(img, inset=0.09):
+    """One atlas tile from a photo of one face: the object, without its ragged outline."""
+    x0, y0, x1, y1 = find_object(img)
+    dx, dy = inset * (x1 - x0), inset * (y1 - y0)
+    crop = img[int(y0 + dy):int(y1 - dy), int(x0 + dx):int(x1 - dx)]
+    return flatten_light(cv2.resize(crop, (TILE, TILE), interpolation=cv2.INTER_AREA), keep=0.6)
+
+
+def build_texture_from_photos():
+    sides = cv2.imread(os.path.join(PHOTOS, "sides.jpg"))
+    h, w = sides.shape[0] // 2, sides.shape[1] // 2
+    quarters = [sides[:h, :w], sides[:h, w:], sides[h:, :w], sides[h:, w:]]
+    top = face_tile(cv2.imread(os.path.join(PHOTOS, "top.jpg")))[::-1]         # OBJ v runs up
+    bottom = face_tile(cv2.imread(os.path.join(PHOTOS, "bottom.jpg")))[::-1]
+    tiles = []
+    for q in quarters:                                                         # +x, +y, -x, -y
+        t = face_tile(q)
+        grey = t.mean(2, keepdims=True)
+        t = grey + SIDE_CHROMA * (t - grey)                  # less cardboard brown showing through
+        tiles.append(t * top.mean((0, 1)) / t.mean((0, 1)))  # ... and the top's wrap colour overall
+    atlas = np.hstack(tiles + [top, bottom])
+    # Photos under white studio light are much brighter than the lab: same overall colour as the texture that
+    # was fitted to the robot's recordings.
+    atlas *= OLD_MEAN_BGR / atlas.reshape(-1, 3).mean(0)
+    cv2.imwrite(TEX, np.clip(atlas, 0, 255).astype(np.uint8))
+
+
 if __name__ == "__main__":
     v = build_mesh()
-    build_texture()
+    if "--from-recordings" in sys.argv:
+        TILES = 5
+        FACES[-1] = (2, -1, 0, 1, 0)
+        v = build_mesh()
+        build_texture()
+    else:
+        build_texture_from_photos()
     print(f"wrote {MESH} ({len(v)} vertices, extents {np.round(np.ptp(v, axis=0), 3)}) and {TEX}")
