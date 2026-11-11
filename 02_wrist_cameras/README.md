@@ -76,7 +76,7 @@ Four ways to switch. Each press goes to the next layout: `pip` -> `side` -> `off
 
 | Where | How |
 |---|---|
-| In VR, controller mode | Press **X** on the left controller |
+| In VR, controller mode | Click the **left stick** in (left X starts teleop) |
 | In VR, any mode | Point at the floating **WRIST VIEW** button (up and to the left of where you look) and click with the controller ray, or pinch |
 | On the web page, before entering VR | Click the button at the bottom-left of the page |
 | At start | `scripts/run_teleop.sh --controller --wrist-layout side` |
@@ -102,7 +102,7 @@ Good to know:
 | Item | Status |
 |---|---|
 | Layouts, switching logic, frame transport | Verified with unit tests and a simulated web client |
-| In-VR **WRIST VIEW** button and the **X** button | **Not yet checked on a physical Quest 3** |
+| In-VR **WRIST VIEW** button and the left stick click | **Not yet checked on a physical Quest 3** |
 | Clicking the in-VR button with the trigger | If a gripper is attached (`--ee ...`), the same trigger pull also closes that gripper |
 | Real robot | The launcher only changes the display, but it was only run against the sim |
 | Camera intrinsics | Datasheet field of view. Replace `WRIST_CAM_FOVY` in `wrist_cameras.py` with your unit's value if you have it. |
