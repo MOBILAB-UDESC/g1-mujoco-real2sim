@@ -1,10 +1,12 @@
-From 1c24e5961a9ac169eba35ccc3dda5799901c9bad Mon Sep 17 00:00:00 2001
+From 7f02e09998de404950bbbcd67cb3d5f94b27c0a0 Mon Sep 17 00:00:00 2001
 From: girardijp3 <joao.girardi@fablabjoinville.com.br>
 Date: Wed, 11 Nov 2026 13:25:52 -0300
-Subject: [PATCH] eval_g1: waist yaw joint, background re-planning, current
- image client
+Subject: [PATCH] eval_g1: optional waist yaw joint, safety limits, background
+ re-planning, current image client
 
-- a policy with one more state/action value than arms + hands drives the waist yaw (last value)
+- --waist=true: the policy has the waist yaw as the last value of its state and action
+  (default false = arms + hands as before)
+- --max_vel (1.0 rad/s) and --max_lead (0.25 rad) limit the arm and waist commands; 0 = off
 - --replan=async (default): the next action chunk is computed in a worker thread while the current
   one plays, so the 30 Hz loop does not stop for inference; --replan=chunk is the old behaviour
 - use the image client API that make_robot.py already has (image_host, camera config)
@@ -12,14 +14,14 @@ Subject: [PATCH] eval_g1: waist yaw joint, background re-planning, current
 
 Co-Authored-By: Claude <noreply@anthropic.com>
 ---
- unitree_lerobot/eval_robot/eval_g1.py         | 101 ++++++++++++------
+ unitree_lerobot/eval_robot/eval_g1.py         | 115 ++++++++++++-----
  unitree_lerobot/eval_robot/make_robot.py      |   5 +-
  .../eval_robot/robot_control/robot_arm.py     |   8 ++
- unitree_lerobot/eval_robot/utils/utils.py     | 101 ++++++++++++++++++
- 4 files changed, 180 insertions(+), 35 deletions(-)
+ unitree_lerobot/eval_robot/utils/utils.py     | 118 ++++++++++++++++++
+ 4 files changed, 211 insertions(+), 35 deletions(-)
 
 diff --git a/unitree_lerobot/eval_robot/eval_g1.py b/unitree_lerobot/eval_robot/eval_g1.py
-index 20588a2..838dfae 100644
+index 20588a2..f4982ef 100644
 --- a/unitree_lerobot/eval_robot/eval_g1.py
 +++ b/unitree_lerobot/eval_robot/eval_g1.py
 @@ -7,6 +7,8 @@ Refer to:   lerobot/lerobot/scripts/eval.py
@@ -31,18 +33,19 @@ index 20588a2..838dfae 100644
  
  import numpy as np
  from pprint import pformat
-@@ -34,8 +36,9 @@ from unitree_lerobot.eval_robot.make_robot import (
+@@ -34,8 +36,10 @@ from unitree_lerobot.eval_robot.make_robot import (
      process_images_and_observations,
  )
  from unitree_lerobot.eval_robot.utils.utils import (
 -    cleanup_resources,
 +    AsyncChunks,
++    limit_command,
      predict_action,
 +    predict_chunk,
      to_list,
      to_scalar,
      EvalRealConfig,
-@@ -68,27 +71,38 @@ def eval_policy(
+@@ -68,27 +72,49 @@ def eval_policy(
          preprocessor.reset()
          postprocessor.reset()
  
@@ -70,17 +73,27 @@ index 20588a2..838dfae 100644
 -                "is_binocular",
 -                "has_wrist_cam",
 -            ]
--        )
 +
-+        # A policy with one more joint than arms + hands has the waist yaw as its LAST state/action value.
++        # --waist=true: the policy has the waist yaw as the LAST value of its state and action.
 +        state_dim = int(policy.config.input_features["observation.state"].shape[0])
 +        base_dim = arm_dof + (2 * ee_dof if cfg.ee else 0)
-+        has_waist = state_dim == base_dim + 1
-+        if state_dim not in (base_dim, base_dim + 1):
-+            raise ValueError(f"policy state has {state_dim} values, but arm={cfg.arm} ee='{cfg.ee}' gives {base_dim}")
++        has_waist = bool(cfg.waist)
++        if state_dim != base_dim + int(has_waist):
++            hint = ""
++            if state_dim == base_dim + 1:
++                hint = " -> this policy has the waist joint: add --waist=true"
++            elif state_dim == base_dim:
++                hint = " -> this policy has no waist joint: remove --waist=true"
++            raise ValueError(
++                f"policy state has {state_dim} values, but arm={cfg.arm} ee='{cfg.ee or 'none'}' "
++                f"waist={has_waist} gives {base_dim + int(has_waist)}{hint}"
++            )
 +        if has_waist and cfg.motion:
 +            logger_mp.warning("motion mode: the motion controller owns the waist, the policy's waist action is ignored")
-+        logger_mp.info(f"State/action layout: {arm_dof} arm + {base_dim - arm_dof} hand + {int(has_waist)} waist yaw")
++        logger_mp.info(
++            f"State/action layout: {arm_dof} arm + {base_dim - arm_dof} hand + {int(has_waist)} waist yaw | "
++            f"limits: max_vel {cfg.max_vel} rad/s, max_lead {cfg.max_lead} rad (0 = off)"
+         )
 +        image_keys = list(policy.config.image_features)
 +        device = get_safe_torch_device(policy.config.device)
 +        actor = None
@@ -94,15 +107,15 @@ index 20588a2..838dfae 100644
  
          # Get initial pose from the first step of the dataset
          from_idx = dataset.meta.episodes["dataset_from_index"][0]
-@@ -99,6 +113,7 @@ def eval_policy(
+@@ -99,6 +125,7 @@ def eval_policy(
          idx = 0
          print(f"user_input: {user_input}")
          full_state = None
-+        waist_cmd = None
++        prev_cmd = None
          if user_input.lower() == "s":
              # "The initial positions of the robot's arm and fingers take the initial positions during data recording."
              logger_mp.info("Initializing robot to starting pose...")
-@@ -110,36 +125,49 @@ def eval_policy(
+@@ -110,36 +137,51 @@ def eval_policy(
              while True:
                  loop_start_time = time.perf_counter()
                  # 1. Get Observations
@@ -156,19 +169,22 @@ index 20588a2..838dfae 100644
 +                    )
 +                    action_np = action.cpu().numpy()
                  # 3. Execute Action
-                 arm_action = action_np[:arm_dof]
+-                arm_action = action_np[:arm_dof]
++                # arms (+ waist) go through the safety limits; the hands are sent as predicted
++                measured = np.concatenate((current_arm_q, waist_state))
++                target = np.concatenate((action_np[:arm_dof], action_np[-1:] if has_waist else []))
++                if prev_cmd is None:
++                    prev_cmd = measured.copy()
++                prev_cmd = limit_command(target, prev_cmd, measured, cfg.max_vel, cfg.max_lead, cfg.frequency)
++                arm_action = prev_cmd[:arm_dof]
                  tau = arm_ik.solve_tau(arm_action)
                  arm_ctrl.ctrl_dual_arm(arm_action, tau)
 +                if has_waist and not cfg.motion:
-+                    if waist_cmd is None:
-+                        waist_cmd = float(waist_state[0])
-+                    max_step = cfg.waist_max_vel / cfg.frequency
-+                    waist_cmd += float(np.clip(action_np[-1] - waist_cmd, -max_step, max_step))
-+                    arm_ctrl.ctrl_waist_yaw(waist_cmd)
++                    arm_ctrl.ctrl_waist_yaw(float(prev_cmd[arm_dof]))
  
                  if cfg.ee:
                      ee_action_start_idx = arm_dof
-@@ -160,10 +188,10 @@ def eval_policy(
+@@ -160,10 +202,10 @@ def eval_policy(
                  # Maintain frequency
                  time.sleep(max(0, (1.0 / cfg.frequency) - (time.perf_counter() - loop_start_time)))
      except Exception as e:
@@ -182,7 +198,7 @@ index 20588a2..838dfae 100644
  
  
  @parser.wrap()
-@@ -177,11 +205,16 @@ def eval_main(cfg: EvalRealConfig):
+@@ -177,11 +219,16 @@ def eval_main(cfg: EvalRealConfig):
      torch.backends.cuda.matmul.allow_tf32 = True
  
      logging.info("Making policy.")
@@ -236,7 +252,7 @@ index a776a18..5b79263 100644
          """Return current dds mode machine."""
          return self.lowstate_subscriber.Read().mode_machine
 diff --git a/unitree_lerobot/eval_robot/utils/utils.py b/unitree_lerobot/eval_robot/utils/utils.py
-index 23e208a..4823132 100644
+index 23e208a..8a2f03b 100644
 --- a/unitree_lerobot/eval_robot/utils/utils.py
 +++ b/unitree_lerobot/eval_robot/utils/utils.py
 @@ -1,3 +1,4 @@
@@ -244,7 +260,7 @@ index 23e208a..4823132 100644
  import numpy as np
  import torch
  from typing import Any
-@@ -79,6 +80,94 @@ def predict_action(
+@@ -79,6 +80,106 @@ def predict_action(
      return action
  
  
@@ -336,10 +352,22 @@ index 23e208a..4823132 100644
 +        return action
 +
 +
++def limit_command(target, prev, measured, max_vel: float, max_lead: float, frequency: float):
++    """Safety limits for one control tick: keep the command within max_lead rad of the measured joints, then
++    let it change by at most max_vel rad/s against the previous command. A limit of 0 is off."""
++    target = np.asarray(target, dtype=float)
++    if max_lead > 0:
++        target = np.clip(target, measured - max_lead, measured + max_lead)
++    if max_vel > 0:
++        step = max_vel / frequency
++        target = prev + np.clip(target - prev, -step, step)
++    return target
++
++
  def reset_policy(policy: PreTrainedPolicy):
      policy.reset()
  
-@@ -132,6 +221,18 @@ class EvalRealConfig:
+@@ -132,6 +233,23 @@ class EvalRealConfig:
      send_real_robot: bool = False
      use_dataset: bool = False
  
@@ -352,8 +380,13 @@ index 23e208a..4823132 100644
 +    replan: str = "async"
 +    # PyTorch CPU threads (0 = leave as is)
 +    threads: int = 0
-+    # waist yaw speed limit [rad/s], only used by policies that have the waist joint
-+    waist_max_vel: float = 2.0
++    # the policy also has the waist yaw joint, as the LAST value of its state and action (arms + hands + waist)
++    waist: bool = False
++    # safety limits on the arm (and waist) commands, 0 = off:
++    # max_vel  [rad/s] how fast a joint command may change
++    # max_lead [rad]   how far a joint command may be ahead of the measured joint
++    max_vel: float = 1.0
++    max_lead: float = 0.25
 +
      rename_map: dict[str, str] = field(default_factory=dict)
  

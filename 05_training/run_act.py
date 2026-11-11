@@ -28,8 +28,8 @@ Safety (every tick, in this order; counters are printed per episode):
   * joint limits (URDF arm limits, waist +-1.0 rad), non-finite actions -> hold;
   * lead clamp: |command - measured| <= --max-lead rad (no large tracking errors -> no torque spikes);
   * velocity limit: |command change| <= --max-vel rad/s (per 1/30 s tick);
-    defaults: 1.0 rad/s and 0.25 rad on the real robot, 2.5 rad/s and 0.9 rad in sim (the scripted sim
-    demonstrations reach 2.1 rad/s; tighter limits make the robot lag behind the policy's plan);
+    defaults 1.0 rad/s and 0.25 rad. The scripted sim demonstrations reach 2.1 rad/s, so a policy trained
+    on them runs slower than its plan with the defaults; --max-vel 2.5 --max-lead 0.9 lifts that in sim;
   * --max-seconds per episode; Ctrl-C stops the policy and HOLDS the current measured pose until a second
     Ctrl-C (then exit). After a normal end, --end start moves slowly back to the start pose, --end hold holds.
 In sim each episode starts with a sim reset (objects re-randomised with --randomize) and counts successes
@@ -419,10 +419,8 @@ def parse_args(argv=None):
                    help="async: re-plan in the background as fast as the PC allows; chunk: play n_action_steps, "
                         "then stop and infer (plain LeRobot)")
     p.add_argument("--threads", type=int, default=4, help="PyTorch CPU threads for inference")
-    p.add_argument("--max-vel", type=float, default=None,
-                   help="rad/s per joint, command change limit (default: 1.0 real, 2.5 sim)")
-    p.add_argument("--max-lead", type=float, default=None,
-                   help="rad, max |command - measured| per joint (default: 0.25 real, 0.9 sim)")
+    p.add_argument("--max-vel", type=float, default=1.0, help="rad/s per joint (command change limit)")
+    p.add_argument("--max-lead", type=float, default=0.25, help="rad, max |command - measured| per joint")
     p.add_argument("--ramp-time", type=float, default=2.0, help="min s for the start ramp / --end start move")
     p.add_argument("--ramp-vel", type=float, default=0.4, help="peak rad/s of the start ramp")
     p.add_argument("--end", choices=["start", "hold"], default="start",
@@ -437,10 +435,6 @@ def parse_args(argv=None):
 
 def main(argv=None):
     a = parse_args(argv)
-    if a.max_vel is None:
-        a.max_vel = 1.0 if a.target == "real" else 2.5
-    if a.max_lead is None:
-        a.max_lead = 0.25 if a.target == "real" else 0.9
     policy = LeRobotPolicy(a.policy_path, a.device, a.n_action_steps, a.task, a.threads)
     n = policy.state_dim
     print(f"[act] {policy.config.type} from {a.policy_path}: state/action {n}, cameras {policy.cams}, "

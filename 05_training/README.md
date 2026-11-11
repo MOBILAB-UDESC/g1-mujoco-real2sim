@@ -174,7 +174,7 @@ Each episode starts with a sim reset (new random layout with `--randomize`) and 
 | `--device` | `cpu` | `cuda` if this PC has one |
 | `--record DIR` | off | Save the rollouts as a LeRobot dataset (`--save-on success` keeps successes only) |
 | `--dry-run` | off | Compute actions from the live cameras and joints but **send nothing** |
-| `--max-vel`, `--max-lead` | real: 1.0 rad/s, 0.25 rad; sim: 2.5 rad/s, 0.9 rad | Safety limits, see step 6. The scripted sim episodes move at up to 2.1 rad/s, so a policy trained on them lags and fails with the real-robot limits |
+| `--max-vel`, `--max-lead` | 1.0 rad/s, 0.25 rad | Safety limits, see step 6. The scripted sim episodes move at up to 2.1 rad/s, so a policy trained on them runs slower than its plan with the defaults; in sim you can pass `--max-vel 2.5 --max-lead 0.9` |
 | `--ramp-time`, `--ramp-vel` | 2 s, 0.4 rad/s | Slow move from the current pose to the first action |
 | `--end start\|hold` | `start` | After the episodes: go slowly back to the start pose, or hold |
 | `--domain`, `--image-port` | 1, 60000 | For a second sim |
@@ -242,17 +242,18 @@ git apply /path/to/g1-mujoco-real2sim/05_training/unitree_lerobot/eval_g1_waist_
 python unitree_lerobot/eval_robot/eval_g1.py \
     --policy.path=/path/to/pretrained_model \
     --repo_id=mobilab-udesc/g1_box_into_box_sim_scripted \
-    --arm=G1_29 --ee=none --frequency=30
+    --arm=G1_29 --ee=none --waist=true --frequency=30
 ```
 
 | Change | What it does |
 |---|---|
-| Waist | A policy with one more value than arms + hands drives the waist yaw with its last value (limited to `--waist_max_vel`, 2 rad/s) |
+| `--waist=true` | The policy has the waist yaw as the last value of its state and action. Without the flag the script handles arms (+ hands) only, as before; the wrong setting stops with a message that says which one the policy needs |
+| `--max_vel`, `--max_lead` | Safety limits on the arm and waist commands, default 1.0 rad/s and 0.25 rad, `0` = off |
 | `--replan=async` (default) | The next chunk is computed in a background thread while the current one plays, so the 30 Hz loop does not stop for inference. `--replan=chunk` is Unitree's original behaviour |
 | Image client | Uses the current image client (`--image_host`, default `192.168.123.164`); mono head camera; `cam_head` is fed from the head image |
 | `--ee=none`, `--sim=true`, `--root`, `--threads` | Arms only; talk to a simulator; local dataset folder; PyTorch CPU threads |
 
-Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. Unlike `run_act.py` it has no start ramp and no velocity or lead limits for the arms: it is Unitree's loop.
+Tested only against the MuJoCo sim (`--sim=true --image_host=127.0.0.1`, sim started with `--iface <your network interface>` on DDS domain 1), **not on the real robot**. Unlike `run_act.py` it has no start ramp: like Unitree's original, it commands the dataset's first arm pose and waits one second before the limited loop starts.
 
 ## 8. Run the tests (optional)
 
