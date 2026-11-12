@@ -194,6 +194,17 @@ python 05_training/merge_datasets.py --out datasets/sim_scripted_v2 --repo-id lo
 - `HUB_REPO=<org>/<name>` uploads every finished part to that Hub dataset (under `parts/`), every 10 episodes.
 - The second command prints planned / recorded / attempts per stratum.
 
+**Watch recorded episodes again in the simulator.** The replay rebuilds each episode's scene from `scenes.jsonl` and sends the recorded joint targets. The episodes must have the same box size (one part = 5 consecutive episodes); the first command prints the simulator command for them:
+
+```bash
+python -m g1lab.scripted.replay_dataset --root datasets/sim_scripted_v2 --episodes 195 196 197 --print-sim
+# terminal 1 (env g1sim): the printed command      terminal 2 (env g1lab):
+python -m g1lab.scripted.replay_dataset --root datasets/sim_scripted_v2 --episodes 195 196 197 --loop
+```
+
+- It is a replay, not the recording: the feed-forward torques are not in the dataset and are computed again, so the motion can differ by a few millimetres.
+- An episode whose scene cannot be rebuilt from its seed is skipped with a message.
+
 Everything goes through one class, `G1Arms` ([g1lab/robot_io.py](g1lab/robot_io.py)), which talks to the sim and to the real robot the same way:
 
 ```python
