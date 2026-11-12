@@ -35,6 +35,7 @@ def test_scenes_stay_within_reach_and_clear_of_the_cardboard_box():
         assert gap >= L.SCENE["wrap_gap"][0] - 0.03            # the reach limit may pull the box in a little
         assert L.SCENE["desk_x"][0] <= scene["desk"][0] <= L.SCENE["desk_x"][1]
         assert L.SCENE["desk_y"][0] <= scene["desk"][1] <= L.SCENE["desk_y"][1]
+        assert L.SCENE["desk_sum"][0] <= scene["desk"][0] + scene["desk"][1] <= L.SCENE["desk_sum"][1]
         assert all(1 - L.SCENE["fov"] <= f <= 1 + L.SCENE["fov"] for f in scene["fov"])
 
 

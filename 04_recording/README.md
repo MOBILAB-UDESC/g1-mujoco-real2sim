@@ -149,7 +149,7 @@ What the planner guarantees, and why (a policy trained on the first version of t
 | No joint commanded faster than 0.85 rad/s | The robot-side runners limit commands to 1.0 rad/s |
 | Widths, heights and hand yaw follow the box's real size and pose | Upright or upside down, any side toward the robot |
 
-An episode is saved only if the box ends in the cardboard box **and** the measured motion kept these limits. About 45 % of attempts are saved; most of the others never start, because the planner finds no motion that keeps the limits for that scene.
+An episode is saved only if the box ends in the cardboard box **and** the measured motion kept these limits. About one attempt in three is saved (200 of 603 for the published dataset); most of the others never start, because the planner finds no motion that keeps the limits for that scene.
 
 Terminal 1 (the box size is fixed per simulator run):
 

@@ -216,8 +216,8 @@ def plan_drop(P, home, floor, yaw_card, across, along, slide, palm_above_bottom,
         # Against the cardboard box the wrapped box counts as CORE cm smaller on every side (its wrap gives).
         need_u = (along - CORE) * np.cos(turn) + (across - CORE) * np.sin(turn) + 0.008   # centre to the near wall
         need_v = (along - CORE) * np.sin(turn) + (across - CORE) * np.cos(turn) + 0.008   # ... and to the right wall
-        for u in np.arange(0.11, 0.20, 0.02):
-            for v in np.arange(0.11, 0.22, 0.02):
+        for u in np.arange(0.11, 0.20, 0.01):
+            for v in np.arange(0.11, 0.22, 0.01):
                 if u >= need_u and v >= need_v:      # only releases where the box fits between the walls:
                     cands.append((0, turn, -(u + v), u, v))   # a box that lands on the rim stays stuck there
     seed = home[:14]   # a neutral posture: the arms come from another waist angle
@@ -527,7 +527,7 @@ def main():
     rng = np.random.default_rng(a.seed)
     scenes = json.load(open(a.scenes)) if a.scenes else None
     wanted = len(scenes) if scenes else a.episodes
-    max_attempts = a.max_attempts or (8 if scenes else 3) * wanted
+    max_attempts = a.max_attempts or (16 if scenes else 3) * wanted
     log = open(a.log, "a") if a.log else None
     ok = attempts = tries = 0
     try:

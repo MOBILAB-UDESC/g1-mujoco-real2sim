@@ -10,7 +10,7 @@ trying scenes of that stratum until one succeeds.
 
   per episode   upright / upside down, which side faces the robot, near-far third, gap third,
                 desk nearer / farther half in x and y, light dim / normal / bright
-  per part      the box size (the simulator fixes it at start): scale 1.03-1.12, each axis +-2 %
+  per part      the box size (the simulator fixes it at start): scale 1.03-1.10, each axis +-2 %
 """
 
 import argparse
@@ -25,7 +25,7 @@ LABELS = {"flip": ["upright", "upside down"], "face": ["side 0", "side 1", "side
           "cell_x": ["near", "middle", "far"], "cell_y": ["small gap", "medium gap", "large gap"],
           "desk_x": ["desk nearer", "desk farther"], "desk_y": ["desk toward the centre", "desk away from it"],
           "light": ["dim", "normal", "bright"]}
-SCALE = (1.03, 1.12)   # the real box is 5-10 % bigger than the calibrated model
+SCALE = (1.03, 1.10)   # the real box is 5-10 % bigger than the calibrated model (with AXIS: 1.01 to 1.12)
 AXIS = 0.02
 
 

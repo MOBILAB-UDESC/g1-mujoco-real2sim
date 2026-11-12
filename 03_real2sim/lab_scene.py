@@ -231,6 +231,11 @@ WRAP_LUMPS = 0.004  # the bubble wrap's lumps stick out this far beyond the coll
 SCENE = dict(
     desk_x=(-0.05, 0.02),    # m, desk relative to the robot: up to 5 cm nearer, 2 cm farther. Farther than that
     desk_y=(-0.05, 0.02),    # (or more to the left) the arms cannot get the box over the cardboard box's walls
+    desk_sum=(-0.055, 0.015),  # m, limits on desk x + y: two corners of that square are left out. With the
+                             # desk both nearer and more to the right, the wrapped box ends up at the end of
+                             # the arms' reach with the cardboard box in the left arm's way (no scripted plan
+                             # keeps the arm off both it and the torso: 0 of 76 tries); with the desk both
+                             # farther and more to the left, the cardboard box is out of reach (2 of 30)
     desk_yaw=2.0,            # deg
     card_xy=0.01,            # m, cardboard box on the desk (glued on the real setup)
     card_yaw=2.0,            # deg
@@ -258,6 +263,16 @@ def _in_cell(rng, lo, hi, k, n=CELLS):
     return float(rng.uniform(lo, hi))
 
 
+def _desk_offset(rng, ix, iy):
+    """Desk x, y relative to the robot: uniform in SCENE's ranges (ix, iy: 0/1 = only that half, None = all
+    of it), except where x + y is outside desk_sum."""
+    S = SCENE
+    while True:
+        x, y = _in_cell(rng, *S["desk_x"], ix, 2), _in_cell(rng, *S["desk_y"], iy, 2)
+        if S["desk_sum"][0] <= x + y <= S["desk_sum"][1]:
+            return [x, y]
+
+
 def sample_scene(rng, want=None, ncam=3, nlight=3):
     """One randomised scene as plain numbers. `want` may fix strata (used by the recorder to balance the
     dataset): flip 0/1 (upright / upside down), face 0-3 (which side faces the robot), cell [ix, iy]
@@ -270,8 +285,7 @@ def sample_scene(rng, want=None, ncam=3, nlight=3):
     band = int(want["light"]) if "light" in want else int(rng.integers(len(S["light_bands"])))
     tint = float(rng.uniform(-S["light_tint"], S["light_tint"]))
     return dict(
-        desk=[_in_cell(rng, *S["desk_x"], dx, 2), _in_cell(rng, *S["desk_y"], dy, 2),
-              float(rng.uniform(-S["desk_yaw"], S["desk_yaw"]))],
+        desk=_desk_offset(rng, dx, dy) + [float(rng.uniform(-S["desk_yaw"], S["desk_yaw"]))],
         card=[float(rng.uniform(-S["card_xy"], S["card_xy"])), float(rng.uniform(-S["card_xy"], S["card_xy"])),
               float(rng.uniform(-S["card_yaw"], S["card_yaw"]))],
         wrap=dict(far=_in_cell(rng, 0.0, 1.0, cell[0]),  # 0 = as near as allowed, 1 = as far as the arms reach

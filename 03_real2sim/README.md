@@ -77,7 +77,7 @@ The same flag is published on the DDS topic `rt/rewards_state`, in the format Un
 | What | Range |
 |---|---|
 | Wrapped box | Upright or upside down; one of its four sides toward the robot, +-10 deg; anywhere the arms reach (centre at most 44 cm from the robot: about 11 cm front to back, 26 cm sideways); at least 14 cm from the cardboard box |
-| Desk, with both boxes on it | 5 cm nearer to 2 cm farther from the robot, 5 cm toward its centre line to 2 cm away, +-2 deg |
+| Desk, with both boxes on it | 5 cm nearer to 2 cm farther from the robot, 5 cm toward its centre line to 2 cm away, +-2 deg. Not both far ends at once: the two shifts add up to between -5.5 and +1.5 cm |
 | Cardboard box on the desk | +-1 cm, +-2 deg (it is glued on the real setup) |
 | Light | Level dim (0.55-0.8), normal (0.8-1.2) or bright (1.2-1.5); each ceiling light x0.8-1.25; warm / cool tint +-6 % |
 | Cameras | Position +-5 mm, direction +-1 deg, field of view +-4 % |
