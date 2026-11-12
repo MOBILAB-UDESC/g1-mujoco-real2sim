@@ -14,7 +14,7 @@ tags:
 
 # G1 box into box (MuJoCo sim, scripted, 15 joints), version 2
 
-**200 episodes, 160,975 frames (89 minutes), all successful.** Episodes are 23 to 32 s long (mean 26.8 s).
+**200 episodes, 161,176 frames (90 minutes), all successful.** Episodes are 23 to 32 s long (mean 26.9 s). Every video frame was decoded once with the decoder LeRobot trains with (torchcodec) before upload.
 
 The episodes are **simulated**. A MuJoCo Unitree G1 (29 DoF, gloved rubber hands, D405 wrist cameras) runs in a real2sim replica of the lab desk and puts a bubble-wrapped box into a cardboard box. Simulator, scripted policy and recorder: [MOBILAB-UDESC/g1-mujoco-real2sim](https://github.com/MOBILAB-UDESC/g1-mujoco-real2sim).
 
@@ -54,13 +54,13 @@ Episodes are kept only when the box ends in the cardboard box and the measured m
 | Desk toward the centre / away from it | 100 / 100 |
 | Light dim / normal / bright | 67 / 67 / 66 |
 
-It took 603 attempts. 392 never started because the planner found no motion that keeps the clearances, 6 ended with the box outside the cardboard box and 1 broke the lead limit. Success per stratum was between 26 % and 51 %.
+It took 615 attempts. 399 never started because the planner found no motion that keeps the clearances, 6 ended with the box outside the cardboard box and 1 broke the lead limit; 9 successful episodes were recorded again with their part (three parts that ran out of attempts, one with a damaged video frame). Success per stratum was between 26 % and 51 %.
 
 ## Limits
 
 - Simulation only. Object poses come from the simulator; the policy that generated the motions is scripted.
 - The robot's arms are short for this task: the box cannot stand farther than 44 cm from the robot, and the desk cannot be farther away than in the ranges above.
-- Two corners of the desk range are missing. With the desk both nearer and more toward the centre (shifts adding up to less than about -6 cm) no plan kept the left arm off both the torso and the cardboard box: 0 of 76 attempts. With the desk both farther and more to the left the cardboard box is out of reach. The first 70 episodes were recorded before this limit was set; one of them is at -6.3 cm.
+- Two corners of the desk range are missing. With the desk both nearer and more toward the centre (shifts adding up to less than about -6 cm) no plan kept the left arm off both the torso and the cardboard box: 0 of 76 attempts. With the desk both farther and more to the left the cardboard box is out of reach. Some of the first 70 episodes were recorded before this limit was set; the lowest is at -5.8 cm.
 - Within a stratum the kept scenes still lean toward the easier ones (about one attempt in three is kept).
 - About 10 % of the camera frames repeat the previous frame (the simulated camera stream is not locked to the 30 Hz recording).
 - Against the cardboard walls the wrapped box counts as 2 cm smaller on every side (bubble wrap squashes); its sides are spring-loaded and give about 8 mm in the grip.

@@ -149,7 +149,7 @@ What the planner guarantees, and why (a policy trained on the first version of t
 | No joint commanded faster than 0.85 rad/s | The robot-side runners limit commands to 1.0 rad/s |
 | Widths, heights and hand yaw follow the box's real size and pose | Upright or upside down, any side toward the robot |
 
-An episode is saved only if the box ends in the cardboard box **and** the measured motion kept these limits. About one attempt in three is saved (200 of 603 for the published dataset); most of the others never start, because the planner finds no motion that keeps the limits for that scene.
+An episode is saved only if the box ends in the cardboard box **and** the measured motion kept these limits. About one attempt in three is saved (200 of 615 for the published dataset); most of the others never start, because the planner finds no motion that keeps the limits for that scene.
 
 Terminal 1 (the box size is fixed per simulator run):
 
@@ -285,7 +285,9 @@ Get an overview first:
 python -m g1lab.check_dataset datasets/teleop_waist
 ```
 
-You should see the episode count, the shortest and longest episode, how far each joint moves, joints that never move, and the share of repeated camera frames. Things to look for:
+You should see the episode count, the shortest and longest episode, how far each joint moves, joints that never move, the share of repeated camera frames, and `every video frame decodes (...): yes`. Things to look for:
+
+- A `DAMAGED FRAME` line names an episode with a video frame that cannot be decoded. Record that episode (or its part) again before training: one such frame stops `lerobot-train` the first time the loader draws it, which can be hours in. It happened to us once in 483,000 frames. Decoding everything takes about 5 minutes for 200 episodes; `--quick` skips it.
 
 - A very short episode (ours: one real episode of 0.2 s) is a false start. Delete it.
 - A joint that never moves (the waist in data recorded without waist motion) needs data with motion mixed in before you train on it, see [stage 5](../05_training/README.md).

@@ -5,6 +5,10 @@ episodes / frames / layout, episode lengths, how much each joint moves (a joint 
 variance: a policy trained on it alone is fragile, see pad_waist.py), and how many camera frames are
 repeats of the previous one (a camera stream slower than the 30 Hz recording shows up here).
 
+It also decodes EVERY video frame with the decoder that training uses (about 5 minutes for 200 episodes).
+One damaged frame is enough to stop a training run, hours in, the first time the loader draws it
+("Could not push packet to decoder: Invalid data found when processing input"). --quick skips this.
+
     source scripts/env.sh g1lab
     python -m g1lab.check_dataset datasets/sim_scripted_waist
 """
@@ -32,6 +36,57 @@ def repeated_frames(path, max_frames=None):
     return float((d < 0.15 * np.median(d)).mean()) if len(d) else 0.0, len(d) + 1
 
 
+def undecodable_frames(path):
+    """(path, frames in the file, [(frame index, error), ...]) for one video file, decoded with torchcodec."""
+    from torchcodec.decoders import VideoDecoder
+    path = str(path)
+    try:
+        dec = VideoDecoder(path, seek_mode="approximate")
+        n = len(dec)
+    except Exception as err:  # noqa: BLE001
+        return path, 0, [(-1, str(err).splitlines()[-1][:90])]
+    bad, step = [], 128
+    for a in range(0, n, step):
+        idx = list(range(a, min(n, a + step)))
+        try:
+            dec.get_frames_at(indices=idx)
+        except Exception:  # noqa: BLE001  one of these fails: find which (a decoder is unusable after an error)
+            for i in idx:
+                try:
+                    VideoDecoder(path, seek_mode="approximate").get_frames_at(indices=[i])
+                except Exception as err:  # noqa: BLE001
+                    bad.append((i, str(err).splitlines()[-1][:90]))
+            dec = VideoDecoder(path, seek_mode="approximate")
+    return path, n, bad
+
+
+def check_every_frame(root, ds, cams, fps, workers=4):
+    """Decode all frames of all cameras; print the episodes that hold a damaged frame. True if all is well."""
+    from concurrent.futures import ProcessPoolExecutor
+    ok = True
+    files = [f for cam in cams for f in sorted((root / "videos" / cam).rglob("*.mp4"))]
+    counts = dict.fromkeys(cams, 0)
+    with ProcessPoolExecutor(workers) as pool:
+        for path, n, bad in pool.map(undecodable_frames, files):
+            cam = Path(path).parents[1].name
+            counts[cam] += n
+            for i, err in bad:
+                ok = False
+                file_index, where = int(Path(path).stem.split("-")[-1]), "?"
+                for e in range(ds.meta.total_episodes):
+                    row = ds.meta.episodes[e]
+                    if row[f"videos/{cam}/file_index"] == file_index and \
+                            row[f"videos/{cam}/from_timestamp"] - 1e-6 <= i / fps < row[f"videos/{cam}/to_timestamp"] - 1e-6:
+                        where = f"episode {e}, frame {round(i - row[f'videos/{cam}/from_timestamp'] * fps)}"
+                print(f"  DAMAGED FRAME: {cam.split('.')[-1]} {Path(path).name} frame {i} ({where}): {err}")
+    for cam, n in counts.items():
+        if n != len(ds):
+            ok = False
+            print(f"  {cam.split('.')[-1]}: {n} video frames for {len(ds)} dataset frames")
+    print(f"every video frame decodes ({sum(counts.values())} frames): {'yes' if ok else 'NO - re-record or drop those episodes'}")
+    return ok
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("root", help="dataset folder (contains meta/, data/, videos/)")
@@ -39,6 +94,7 @@ def main():
     p.add_argument("--videos", type=int, default=3,
                    help="check the first N x 1000 frames of each camera's first video file for repeated frames "
                         "(0 = skip)")
+    p.add_argument("--quick", action="store_true", help="do not decode every video frame")
     a = p.parse_args()
     root = Path(a.root)
     info = json.loads((root / "meta" / "info.json").read_text())
@@ -62,6 +118,9 @@ def main():
         except Exception as err:
             broken.append((e, str(err).splitlines()[-1][:80]))
     print(f"video frames of every episode decode: {'yes' if not broken else f'NO, {len(broken)} episodes fail, e.g. {broken[0]}'}")
+
+    if not a.quick and cams:
+        check_every_frame(root, ds, cams, info["fps"])
 
     table = ds.hf_dataset.with_format("numpy")
     state, action, ep = np.stack(table["observation.state"]), np.stack(table["action"]), np.asarray(table["episode_index"])

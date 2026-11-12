@@ -146,7 +146,7 @@ Datasets are not in git. They live on the Hugging Face Hub, in the [mobilab-udes
 | Dataset | Source | Episodes | Joints | robot_type |
 |---|---|---|---|---|
 | `mobilab-udesc/UnitreeG1-CubePickAndPlace-LeRobot` | Real robot, VR teleop | 52 | 14 arms | `Unitree_G1_ArmsOnly_3Cam` |
-| `mobilab-udesc/g1_box_into_box_sim_scripted_v2` | Lab sim, scripted, version 2: side grasp, arms clear of torso and cardboard box, within the robot's speed limit, balanced over box size / pose / desk offset / light | 200 (160,975 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
+| `mobilab-udesc/g1_box_into_box_sim_scripted_v2` | Lab sim, scripted, version 2: side grasp, arms clear of torso and cardboard box, within the robot's speed limit, balanced over box size / pose / desk offset / light | 200 (161,176 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
 | `mobilab-udesc/g1_box_into_box_sim_scripted` | Lab sim, scripted, version 1. A policy trained on it failed on the real robot (arms against the torso, fingers on top of the box, motions faster than the robot allows); kept for reference | 100 (48,056 frames) | 14 arms + waist | `Unitree_G1_ArmsWaist_3Cam` |
 
 All are LeRobot v3.0, 30 fps, three 640x480 cameras: `cam_head`, `cam_left_wrist`, `cam_right_wrist`.
